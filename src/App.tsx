@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import DashboardLayout from "./layouts/DashboardLayout"
 import PageIndex from "./pages/seo/PageIndex"
+import MetaSchema from "./pages/seo/MetaSchema"
 import PlaceholderView from "./pages/Placeholder"
 
 function App() {
@@ -11,7 +12,7 @@ function App() {
           <Route path="/" element={<PageIndex />} />
 
           {/* SEO Engine */}
-          <Route path="/seo/meta" element={<PlaceholderView />} />
+          <Route path="/seo/meta" element={<MetaSchema />} />
           <Route path="/seo/content" element={<PlaceholderView />} />
           <Route path="/seo/blog" element={<PlaceholderView />} />
           <Route path="/seo/gmb" element={<PlaceholderView />} />
