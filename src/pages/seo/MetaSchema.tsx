@@ -218,19 +218,33 @@ export default function MetaSchema() {
         enabled: !!selectedPage
     })
 
-    // Generate recommendations mutation (calls backend)
+    // Generate recommendations mutation (calls backend API)
     const generateMutation = useMutation({
         mutationFn: async (pageId: string) => {
-            // For now, show toast - actual generation happens via CLI
-            // In production, this would call an API endpoint
-            toast.info('Run in terminal:', {
-                description: `node generate-recommendations.js ${pageId}`,
-                duration: 10000
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+            const response = await fetch(`${apiUrl}/api/generate-recommendations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId })
             })
-            return null
+
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to generate recommendations')
+            }
+
+            return response.json()
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
+            toast.success('Recommendations generated!', {
+                description: data?.recommendations?.overall_reasoning?.slice(0, 100) + '...'
+            })
             refetchPage()
+        },
+        onError: (error: Error) => {
+            toast.error('Generation failed', {
+                description: error.message
+            })
         }
     })
 
