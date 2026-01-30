@@ -6,7 +6,7 @@
     "deploy": {
         "numReplicas": 1,
         "startCommand": "npm run start",
-        "healthcheckPath": "/",
+        "healthcheckPath": "/api/health",
         "healthcheckTimeout": 100
     }
 }
