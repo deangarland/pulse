@@ -179,14 +179,15 @@ export default function MetaSchema() {
         }
     })
 
-    // Fetch pages for selected site
+    // Fetch pages for selected site (exclude 301 redirects)
     const { data: pages, isLoading: pagesLoading } = useQuery({
         queryKey: ['site-pages', selectedSite],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('page_index')
-                .select('id, url, title, page_type')
+                .select('id, url, title, page_type, status_code')
                 .eq('site_id', selectedSite)
+                .neq('status_code', 301)
                 .order('url')
             if (error) throw error
             return data
