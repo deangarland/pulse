@@ -478,26 +478,32 @@ ${schema?.overall_reasoning || 'N/A'}
 
                                 {/* After - Recommended Schema */}
                                 <div>
-                                    {page.schema_recommendation && page.schema_recommendation.schemas && page.schema_recommendation.schemas.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {page.schema_recommendation.schemas.map((schema, i) => (
-                                                <div key={i} className="space-y-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
-                                                            {schema.type}
-                                                        </span>
-                                                        <PriorityBadge priority={schema.priority} />
-                                                    </div>
-                                                    <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
-                                                    <JsonPreview data={schema.json_ld} />
+                                    {(() => {
+                                        const schemas = page.schema_recommendation?.schemas;
+                                        if (!schemas || schemas.length === 0) {
+                                            return (
+                                                <div className="text-sm text-muted-foreground italic">
+                                                    No recommendations yet - click Generate
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-muted-foreground italic">
-                                            No recommendations yet - click Generate
-                                        </div>
-                                    )}
+                                            );
+                                        }
+                                        return (
+                                            <div className="space-y-4">
+                                                {schemas.map((schema, i) => (
+                                                    <div key={i} className="space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
+                                                                {schema.type}
+                                                            </span>
+                                                            <PriorityBadge priority={schema.priority} />
+                                                        </div>
+                                                        <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
+                                                        <JsonPreview data={schema.json_ld} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
