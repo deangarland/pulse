@@ -1,16 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 import {
     Collapsible,
     CollapsibleContent,
@@ -145,9 +139,16 @@ function ComparisonRow({
     )
 }
 
+// Page types for filter
+const PAGE_TYPES = [
+    'HOMEPAGE', 'PROCEDURE', 'RESOURCE', 'ABOUT', 'CONTACT',
+    'LOCATION', 'TEAM_MEMBER', 'GALLERY', 'CONDITION', 'GENERIC'
+]
+
 export default function MetaSchema() {
     const [selectedSite, setSelectedSite] = useState<string>('')
     const [selectedPage, setSelectedPage] = useState<string>('')
+    const [pageTypeFilter, setPageTypeFilter] = useState<string>('')
 
     // Fetch sites
     const { data: sites } = useQuery({
@@ -176,6 +177,31 @@ export default function MetaSchema() {
         },
         enabled: !!selectedSite
     })
+
+    // Convert sites to combobox options
+    const siteOptions = useMemo(() =>
+        sites?.map(site => ({ value: site.id, label: site.domain })) || [],
+        [sites]
+    )
+
+    // Page type options for filter
+    const pageTypeOptions = useMemo(() => [
+        { value: '', label: 'All Types' },
+        ...PAGE_TYPES.map(type => ({ value: type, label: type }))
+    ], [])
+
+    // Convert pages to combobox options (filtered by page type)
+    const pageOptions = useMemo(() => {
+        let filtered = pages || []
+        if (pageTypeFilter) {
+            filtered = filtered.filter(p => p.page_type === pageTypeFilter)
+        }
+        return filtered.map(p => ({
+            value: p.id,
+            label: new URL(p.url).pathname,
+            sublabel: p.page_type || undefined
+        }))
+    }, [pages, pageTypeFilter])
 
     // Fetch selected page details
     const { data: page, isLoading: pageLoading, refetch: refetchPage } = useQuery({
@@ -324,32 +350,38 @@ ${schema?.overall_reasoning || 'N/A'}
                     </div>
 
                     {/* Filters */}
-                    <div className="flex items-center gap-4 mt-4">
-                        <Select value={selectedSite} onValueChange={v => { setSelectedSite(v); setSelectedPage('') }}>
-                            <SelectTrigger className="w-[200px]">
-                                <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
-                                <SelectValue placeholder="Select site..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {sites?.map(site => (
-                                    <SelectItem key={site.id} value={site.id}>{site.domain}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="flex items-center gap-4 mt-4 flex-wrap">
+                        <SearchableCombobox
+                            options={siteOptions}
+                            value={selectedSite}
+                            onValueChange={v => { setSelectedSite(v); setSelectedPage('') }}
+                            placeholder="Select site..."
+                            searchPlaceholder="Search sites..."
+                            emptyText="No sites found."
+                            className="w-[220px]"
+                            icon={<Building2 className="h-4 w-4 text-muted-foreground" />}
+                        />
 
-                        <Select value={selectedPage} onValueChange={setSelectedPage} disabled={!selectedSite}>
-                            <SelectTrigger className="w-[350px]">
-                                <SelectValue placeholder={pagesLoading ? "Loading..." : "Select page..."} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {pages?.map(p => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                        <span className="font-mono text-xs">{new URL(p.url).pathname}</span>
-                                        {p.page_type && <span className="ml-2 text-muted-foreground">({p.page_type})</span>}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <SearchableCombobox
+                            options={pageTypeOptions}
+                            value={pageTypeFilter}
+                            onValueChange={v => { setPageTypeFilter(v); setSelectedPage('') }}
+                            placeholder="All page types"
+                            searchPlaceholder="Filter by type..."
+                            emptyText="No types found."
+                            className="w-[160px]"
+                        />
+
+                        <SearchableCombobox
+                            options={pageOptions}
+                            value={selectedPage}
+                            onValueChange={setSelectedPage}
+                            placeholder={pagesLoading ? "Loading..." : "Select page..."}
+                            searchPlaceholder="Search pages..."
+                            emptyText="No pages found."
+                            className="w-[350px]"
+                            disabled={!selectedSite}
+                        />
 
                         <Button
                             onClick={() => page && generateMutation.mutate(page.id)}
