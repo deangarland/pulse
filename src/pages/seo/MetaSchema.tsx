@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -10,7 +10,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, Tag, Building2 } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, Tag } from "lucide-react"
 import { toast } from "sonner"
 
 interface Page {
@@ -166,18 +166,43 @@ export default function MetaSchema() {
     const [selectedPage, setSelectedPage] = useState<string>('')
     const [pageTypeFilter, setPageTypeFilter] = useState<string>('')
 
-    // Fetch sites
-    const { data: sites } = useQuery({
-        queryKey: ['sites'],
-        queryFn: async () => {
-            const { data, error } = await supabase
-                .from('site_index')
-                .select('id, domain')
-                .order('domain')
-            if (error) throw error
-            return data
+    // Listen for global account changes
+    useEffect(() => {
+        // Load initial account from localStorage
+        const savedAccountId = localStorage.getItem('selectedAccountId')
+        if (savedAccountId) {
+            fetchSiteForAccount(savedAccountId)
         }
-    })
+
+        // Listen for changes
+        const handleAccountChange = (e: CustomEvent) => {
+            const accountId = e.detail
+            if (accountId && accountId !== 'all') {
+                fetchSiteForAccount(accountId)
+            } else {
+                setSelectedSite('')
+                setSelectedPage('')
+            }
+        }
+
+        window.addEventListener('accountChanged', handleAccountChange as EventListener)
+        return () => window.removeEventListener('accountChanged', handleAccountChange as EventListener)
+    }, [])
+
+    // Fetch site for selected account
+    const fetchSiteForAccount = async (accountId: string) => {
+        const { data, error } = await supabase
+            .from('site_index')
+            .select('id')
+            .eq('account_id', accountId)
+            .limit(1)
+            .single()
+
+        if (!error && data) {
+            setSelectedSite(data.id)
+            setSelectedPage('')
+        }
+    }
 
     // Fetch pages for selected site (exclude 301 redirects)
     const { data: pages, isLoading: pagesLoading } = useQuery({
@@ -190,16 +215,10 @@ export default function MetaSchema() {
                 .neq('status_code', 301)
                 .order('url')
             if (error) throw error
-            return data
+            return data as { id: string; url: string; title: string; page_type: string; status_code: number }[]
         },
         enabled: !!selectedSite
     })
-
-    // Convert sites to combobox options
-    const siteOptions = useMemo(() =>
-        sites?.map(site => ({ value: site.id, label: site.domain })) || [],
-        [sites]
-    )
 
     // Page type options for filter
     const pageTypeOptions = useMemo(() => [
@@ -382,16 +401,6 @@ ${schema?.overall_reasoning || 'N/A'}
 
                     {/* Filters */}
                     <div className="flex items-center gap-4 mt-4 flex-wrap">
-                        <SearchableCombobox
-                            options={siteOptions}
-                            value={selectedSite}
-                            onValueChange={v => { setSelectedSite(v); setSelectedPage('') }}
-                            placeholder="Select site..."
-                            searchPlaceholder="Search sites..."
-                            emptyText="No sites found."
-                            className="w-[220px]"
-                            icon={<Building2 className="h-4 w-4 text-muted-foreground" />}
-                        />
 
                         <SearchableCombobox
                             options={pageTypeOptions}
