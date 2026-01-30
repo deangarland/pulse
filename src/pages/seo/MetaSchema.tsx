@@ -478,7 +478,7 @@ ${schema?.overall_reasoning || 'N/A'}
 
                                 {/* After - Recommended Schema */}
                                 <div>
-                                    {page.schema_recommendation?.schemas?.length > 0 ? (
+                                    {page.schema_recommendation && page.schema_recommendation.schemas && page.schema_recommendation.schemas.length > 0 ? (
                                         <div className="space-y-4">
                                             {page.schema_recommendation.schemas.map((schema, i) => (
                                                 <div key={i} className="space-y-2">
