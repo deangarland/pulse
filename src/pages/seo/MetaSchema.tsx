@@ -257,7 +257,7 @@ export default function MetaSchema() {
     // Generate recommendations mutation (calls backend API)
     const generateMutation = useMutation({
         mutationFn: async (pageId: string) => {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+            const apiUrl = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${apiUrl}/api/generate-recommendations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
