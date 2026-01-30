@@ -95,7 +95,7 @@ function PriorityBadge({ priority }: { priority: string }) {
     )
 }
 
-// Before/After comparison row
+// Before/After comparison row with copy button
 function ComparisonRow({
     label,
     before,
@@ -111,6 +111,15 @@ function ComparisonRow({
 }) {
     const IconComponent = Icon || Tag
     const hasChange = before !== after
+    const [copied, setCopied] = useState(false)
+
+    const copyToClipboard = () => {
+        if (after) {
+            navigator.clipboard.writeText(after)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        }
+    }
 
     return (
         <div className="grid grid-cols-2 gap-4 py-4 border-b border-border/50 last:border-0">
@@ -127,8 +136,15 @@ function ComparisonRow({
 
             {/* After */}
             <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    {hasChange && <span className="text-green-600">✓ Optimized</span>}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        {hasChange && <span className="text-green-600">✓ Optimized</span>}
+                    </div>
+                    {after && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyToClipboard}>
+                            {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                    )}
                 </div>
                 <div className={`text-sm ${hasChange ? 'text-green-700 font-medium' : ''}`}>
                     {after || <span className="text-muted-foreground italic">No recommendation</span>}
@@ -501,20 +517,40 @@ ${schema?.overall_reasoning || 'N/A'}
                                                 </div>
                                             );
                                         }
+
+                                        // Combine all schemas into one script tag
+                                        const combinedSchema = schemas.length === 1
+                                            ? schemas[0].json_ld
+                                            : { "@context": "https://schema.org", "@graph": schemas.map(s => s.json_ld) };
+
                                         return (
-                                            <div className="space-y-4">
-                                                {schemas.map((schema, i) => (
-                                                    <div key={i} className="space-y-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
-                                                                {schema.type}
-                                                            </span>
-                                                            <PriorityBadge priority={schema.priority} />
-                                                        </div>
-                                                        <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
-                                                        <JsonPreview data={schema.json_ld} />
+                                            <div className="space-y-6">
+                                                {/* Combined Schema - Copy All */}
+                                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
                                                     </div>
-                                                ))}
+                                                    <JsonPreview data={combinedSchema} />
+                                                </div>
+
+                                                {/* Individual Schema Breakdown */}
+                                                <div className="border-t pt-4">
+                                                    <div className="text-xs font-medium text-muted-foreground mb-3">Individual Schemas Breakdown:</div>
+                                                    <div className="space-y-4">
+                                                        {schemas.map((schema, i) => (
+                                                            <div key={i} className="space-y-2 bg-gray-50 rounded-lg p-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
+                                                                        {schema.type}
+                                                                    </span>
+                                                                    <PriorityBadge priority={schema.priority} />
+                                                                </div>
+                                                                <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
+                                                                <JsonPreview data={schema.json_ld} />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
                                         );
                                     })()}
