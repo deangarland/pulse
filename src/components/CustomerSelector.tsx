@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import {
     Select,
     SelectContent,
@@ -16,8 +17,8 @@ interface Account {
 
 export function CustomerSelector() {
     const [accounts, setAccounts] = useState<Account[]>([])
-    const [selectedAccount, setSelectedAccount] = useState<string>('')
     const [loading, setLoading] = useState(true)
+    const { selectedAccountId, setSelectedAccount } = useAccountStore()
 
     useEffect(() => {
         async function fetchAccounts() {
@@ -39,14 +40,13 @@ export function CustomerSelector() {
     }, [])
 
     const handleChange = (value: string) => {
-        setSelectedAccount(value)
-        // For now, just store in localStorage - could be lifted to context later
         if (value === 'all') {
-            localStorage.removeItem('selectedAccountId')
+            setSelectedAccount(null, null)
         } else {
-            localStorage.setItem('selectedAccountId', value)
+            const account = accounts.find(a => a.id === value)
+            setSelectedAccount(value, account?.account_name || null)
         }
-        // Trigger page refresh to apply filter (or use context/state management)
+        // Trigger page refresh to apply filter
         window.dispatchEvent(new CustomEvent('accountChanged', { detail: value }))
     }
 
@@ -62,7 +62,7 @@ export function CustomerSelector() {
     return (
         <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-muted-foreground" />
-            <Select value={selectedAccount} onValueChange={handleChange}>
+            <Select value={selectedAccountId || 'all'} onValueChange={handleChange}>
                 <SelectTrigger className="w-[200px] h-8 text-sm">
                     <SelectValue placeholder="All Customers" />
                 </SelectTrigger>

@@ -1,4 +1,4 @@
-import { ChevronDown, BarChart3, Megaphone, Search, Settings } from "lucide-react"
+import { ChevronDown, BarChart3, Megaphone, Search, Settings, Home } from "lucide-react"
 import {
     Sidebar,
     SidebarContent,
@@ -22,10 +22,17 @@ import { Link, useLocation } from "react-router-dom"
 // Menu items
 const items = [
     {
+        title: "Dashboard",
+        icon: Home,
+        items: [
+            { title: "Overview", url: "/" },
+        ]
+    },
+    {
         title: "SEO Engine",
         icon: Search,
         items: [
-            { title: "Page Index", url: "/" },
+            { title: "Page Index", url: "/seo/pages" },
             { title: "Meta & Schema", url: "/seo/meta" },
             { title: "Page Content", url: "/seo/content" },
             { title: "Blog Posts", url: "/seo/blog" },
