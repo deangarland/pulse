@@ -6,12 +6,22 @@ import MetaSchema from "./pages/seo/MetaSchema"
 import PlaceholderView from "./pages/Placeholder"
 import Prompts from "./pages/admin/Prompts"
 import Taxonomy from "./pages/admin/Taxonomy"
+import Login from "./pages/Login"
+import { ProtectedRoute } from "./components/ProtectedRoute"
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route element={<DashboardLayout />}>
+        {/* Public routes */}
+        <Route path="/login" element={<Login />} />
+
+        {/* Protected routes */}
+        <Route element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }>
           <Route path="/" element={<Home />} />
 
           {/* SEO Engine */}

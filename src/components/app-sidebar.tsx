@@ -1,4 +1,4 @@
-import { ChevronDown, BarChart3, Megaphone, Search, Settings, Home } from "lucide-react"
+import { ChevronDown, BarChart3, Megaphone, Search, Settings, Home, LogOut } from "lucide-react"
 import {
     Sidebar,
     SidebarContent,
@@ -18,6 +18,8 @@ import {
     CollapsibleContent,
 } from "@/components/ui/collapsible"
 import { Link, useLocation, useSearchParams } from "react-router-dom"
+import { Button } from "@/components/ui/button"
+import { useAuthStore } from "@/lib/auth-store"
 
 // Menu items
 const items = [
@@ -106,7 +108,16 @@ export function AppSidebar() {
                 ))}
             </SidebarContent>
             <SidebarFooter>
-                <div className="p-4 flex flex-col items-center gap-2">
+                <div className="p-4 flex flex-col items-center gap-3">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-muted-foreground hover:text-foreground"
+                        onClick={() => useAuthStore.getState().signOut()}
+                    >
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Sign Out
+                    </Button>
                     <img
                         src="/dean-garland-logo.png"
                         alt="Dean Garland"
