@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
     Table,
@@ -140,15 +141,32 @@ interface Filters {
 }
 
 export default function PageIndex() {
-    const [page, setPage] = useState(0)
-    const [filters, setFilters] = useState<Filters>({ search: '', pageType: '', statusCode: '' })
-    const [searchInput, setSearchInput] = useState('')
+    const [searchParams, setSearchParams] = useSearchParams()
+
+    // Initialize from URL params
+    const [page, setPage] = useState(() => parseInt(searchParams.get('page') || '0'))
+    const [filters, setFilters] = useState<Filters>({
+        search: searchParams.get('q') || '',
+        pageType: searchParams.get('type') || '',
+        statusCode: searchParams.get('status') || ''
+    })
+    const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
         new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
     )
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
     const columnWidthsRef = useRef<Record<string, number>>(columnWidths)
     const [exporting, setExporting] = useState(false)
+
+    // Sync URL with filter state
+    useEffect(() => {
+        const params = new URLSearchParams()
+        if (filters.search) params.set('q', filters.search)
+        if (filters.pageType) params.set('type', filters.pageType)
+        if (filters.statusCode) params.set('status', filters.statusCode)
+        if (page > 0) params.set('page', page.toString())
+        setSearchParams(params, { replace: true })
+    }, [filters, page, setSearchParams])
 
     // Edit sheet state
     const [editingPage, setEditingPage] = useState<any>(null)
