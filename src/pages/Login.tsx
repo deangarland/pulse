@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/lib/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Loader2 } from 'lucide-react'
 
 export default function Login() {
+    const navigate = useNavigate()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
@@ -23,8 +25,10 @@ export default function Login() {
         if (error) {
             setError(error.message || 'Invalid credentials')
             setLoading(false)
+        } else {
+            // Redirect to dashboard on success
+            navigate('/', { replace: true })
         }
-        // If successful, the auth state will update and redirect happens automatically
     }
 
     return (
