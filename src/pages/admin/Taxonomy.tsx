@@ -265,17 +265,30 @@ function TaxonomyTable({
                                 />
                             ) : (
                                 <TableRow key={item.id}>
-                                    {displayColumns.map((col: string) => (
-                                        <TableCell key={col}>
-                                            {col === 'primary' ? (
-                                                item[col] ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
-                                            ) : (
-                                                <span className="truncate max-w-[200px] block">
-                                                    {item[col] || '-'}
+                                    {displayColumns.map((col: string) => {
+                                        const value = item[col]
+                                        let displayValue: React.ReactNode = '-'
+
+                                        if (col === 'primary' || col === 'is_primary' || col === 'auto_generate') {
+                                            displayValue = value ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
+                                        } else if (col === 'active') {
+                                            displayValue = value ? 'Yes' : 'No'
+                                        } else if (Array.isArray(value)) {
+                                            displayValue = value.join(', ')
+                                        } else if (typeof value === 'object' && value !== null) {
+                                            displayValue = JSON.stringify(value)
+                                        } else if (value !== null && value !== undefined && value !== '') {
+                                            displayValue = String(value)
+                                        }
+
+                                        return (
+                                            <TableCell key={col}>
+                                                <span className="truncate max-w-[250px] block">
+                                                    {displayValue}
                                                 </span>
-                                            )}
-                                        </TableCell>
-                                    ))}
+                                            </TableCell>
+                                        )
+                                    })}
                                     <TableCell className="flex gap-1">
                                         <Button
                                             size="icon"
