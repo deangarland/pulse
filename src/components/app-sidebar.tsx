@@ -1,4 +1,4 @@
-import { ChevronDown, BarChart3, Megaphone, Search } from "lucide-react"
+import { ChevronDown, BarChart3, Megaphone, Search, Settings } from "lucide-react"
 import {
     Sidebar,
     SidebarContent,
@@ -45,6 +45,13 @@ const items = [
         icon: BarChart3,
         items: [
             { title: "Dashboards", url: "/performance" },
+        ]
+    },
+    {
+        title: "Admin",
+        icon: Settings,
+        items: [
+            { title: "Prompts", url: "/admin/prompts" },
         ]
     }
 ]

@@ -3,6 +3,7 @@ import DashboardLayout from "./layouts/DashboardLayout"
 import PageIndex from "./pages/seo/PageIndex"
 import MetaSchema from "./pages/seo/MetaSchema"
 import PlaceholderView from "./pages/Placeholder"
+import Prompts from "./pages/admin/Prompts"
 
 function App() {
   return (
@@ -23,6 +24,9 @@ function App() {
 
           {/* Performance */}
           <Route path="/performance" element={<PlaceholderView />} />
+
+          {/* Admin */}
+          <Route path="/admin/prompts" element={<Prompts />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -24,7 +24,7 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 })
 
-const SYSTEM_PROMPT = `You are an expert SEO consultant specializing in healthcare and medical aesthetics websites. Your role is to analyze web pages and provide optimized meta tags and schema markup recommendations.
+const DEFAULT_SYSTEM_PROMPT = `You are an expert SEO consultant specializing in healthcare and medical aesthetics websites. Your role is to analyze web pages and provide optimized meta tags and schema markup recommendations.
 
 For every recommendation, you MUST explain your reasoning - why you're making this specific change and what benefit it provides.
 
@@ -35,6 +35,26 @@ Focus on:
 - Clear, compelling copy that drives clicks
 
 Your recommendations should be specific to healthcare/medical practices and their procedures.`
+
+// Fetch system prompt from database
+async function getSystemPrompt(promptName = 'Meta & Schema Recommendations') {
+    try {
+        const { data, error } = await supabase
+            .from('prompts')
+            .select('system_prompt')
+            .eq('name', promptName)
+            .single()
+
+        if (error || !data) {
+            console.log('Using default system prompt (DB prompt not found)')
+            return DEFAULT_SYSTEM_PROMPT
+        }
+        return data.system_prompt
+    } catch (err) {
+        console.log('Using default system prompt (fetch failed)')
+        return DEFAULT_SYSTEM_PROMPT
+    }
+}
 
 const USER_PROMPT_TEMPLATE = `Analyze this page and provide optimized recommendations:
 
@@ -129,13 +149,16 @@ app.post('/api/generate-recommendations', async (req, res) => {
             return res.status(404).json({ error: `Page not found: ${fetchError.message}` })
         }
 
+        // Fetch system prompt from database
+        const systemPrompt = await getSystemPrompt()
+
         // Generate recommendations
         const prompt = buildPrompt(page)
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
             ],
             response_format: { type: 'json_object' },
