@@ -7,7 +7,7 @@ import { Outlet } from "react-router-dom"
 
 export default function DashboardLayout() {
     return (
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={false}>
             <div className="flex min-h-screen w-full">
                 <AppSidebar />
                 <main className="flex-1 flex flex-col ml-56">
