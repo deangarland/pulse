@@ -273,21 +273,58 @@ export default function Taxonomy() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Taxonomy</h1>
                 <p className="text-muted-foreground">
-                    Manage schema.org mappings and page type classifications
+                    Manage locations, procedures, categories, and schema mappings
                 </p>
             </div>
 
             <Card>
-                <Tabs defaultValue="schema_org" className="w-full">
+                <Tabs defaultValue="locations" className="w-full">
                     <CardHeader className="pb-0">
-                        <TabsList>
-                            <TabsTrigger value="schema_org" className="flex items-center gap-2">
-                                <Star className="h-4 w-4" />
-                                Schema.org Mappings
-                            </TabsTrigger>
+                        <TabsList className="flex-wrap h-auto gap-1">
+                            <TabsTrigger value="locations">Locations</TabsTrigger>
+                            <TabsTrigger value="procedures">Procedures</TabsTrigger>
+                            <TabsTrigger value="categories">Categories</TabsTrigger>
+                            <TabsTrigger value="body_areas">Body Areas</TabsTrigger>
+                            <TabsTrigger value="conditions">Conditions</TabsTrigger>
+                            <TabsTrigger value="schema_org">Schema.org</TabsTrigger>
                         </TabsList>
                     </CardHeader>
                     <CardContent className="pt-6">
+                        <TabsContent value="locations" className="mt-0">
+                            <TaxonomyTable
+                                tableName="locations_procedures"
+                                columns={['location_name', 'city', 'state', 'phone_number', 'is_primary']}
+                                icon={Star}
+                            />
+                        </TabsContent>
+                        <TabsContent value="procedures" className="mt-0">
+                            <TaxonomyTable
+                                tableName="procedures"
+                                columns={['procedure_name', 'procedure_type', 'short_description', 'active']}
+                                icon={Star}
+                            />
+                        </TabsContent>
+                        <TabsContent value="categories" className="mt-0">
+                            <TaxonomyTable
+                                tableName="categories"
+                                columns={['category', 'type', 'description', 'active']}
+                                icon={Star}
+                            />
+                        </TabsContent>
+                        <TabsContent value="body_areas" className="mt-0">
+                            <TaxonomyTable
+                                tableName="body_areas"
+                                columns={['body_area']}
+                                icon={Star}
+                            />
+                        </TabsContent>
+                        <TabsContent value="conditions" className="mt-0">
+                            <TaxonomyTable
+                                tableName="conditions"
+                                columns={['condition', 'description']}
+                                icon={Star}
+                            />
+                        </TabsContent>
                         <TabsContent value="schema_org" className="mt-0">
                             <TaxonomyTable
                                 tableName="schema_org"
