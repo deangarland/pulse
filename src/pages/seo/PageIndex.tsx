@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import {
     Table,
     TableBody,
@@ -142,6 +143,7 @@ interface Filters {
 
 export default function PageIndex() {
     const [searchParams, setSearchParams] = useSearchParams()
+    const { selectedAccountId } = useAccountStore()
 
     // Initialize from URL params
     const [page, setPage] = useState(() => parseInt(searchParams.get('page') || '0'))
@@ -212,6 +214,11 @@ export default function PageIndex() {
     const buildQuery = (baseQuery: any) => {
         let query = baseQuery
 
+        // Filter by selected account
+        if (selectedAccountId) {
+            query = query.eq('account_id', selectedAccountId)
+        }
+
         if (filters.search) {
             query = query.or(`url.ilike.%${filters.search}%,title.ilike.%${filters.search}%`)
         }
@@ -226,7 +233,7 @@ export default function PageIndex() {
     }
 
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode],
+        queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode, selectedAccountId],
         queryFn: async () => {
             const from = page * PAGE_SIZE
             const to = from + PAGE_SIZE - 1
