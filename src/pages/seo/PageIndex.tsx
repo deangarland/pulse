@@ -12,8 +12,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft, ChevronRight, RotateCcw, Search, Download, X } from "lucide-react"
+import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft, ChevronRight, RotateCcw, Search, Download, X, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageEditSheet } from "@/components/PageEditSheet"
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -148,6 +149,15 @@ export default function PageIndex() {
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
     const columnWidthsRef = useRef<Record<string, number>>(columnWidths)
     const [exporting, setExporting] = useState(false)
+
+    // Edit sheet state
+    const [editingPage, setEditingPage] = useState<any>(null)
+    const [editSheetOpen, setEditSheetOpen] = useState(false)
+
+    const handleEditPage = (page: any) => {
+        setEditingPage(page)
+        setEditSheetOpen(true)
+    }
 
     // Keep ref in sync with state for access in event handlers
     useEffect(() => {
@@ -403,220 +413,242 @@ export default function PageIndex() {
     }
 
     return (
-        <Card>
-            <CardHeader className="pb-3">
-                <div className="flex flex-row items-center justify-between">
-                    <div>
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <FileText className="h-5 w-5" />
-                            Page Index
-                        </CardTitle>
-                        <CardDescription>
-                            {data?.total.toLocaleString()} pages {hasFilters ? '(filtered)' : 'indexed'}
-                        </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={resetColumnWidths}
-                            title="Reset column widths"
-                        >
-                            <RotateCcw className="h-4 w-4" />
-                        </Button>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm">
-                                    <Settings2 className="h-4 w-4 mr-2" />
-                                    Columns
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {ALL_COLUMNS.map((col) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={col.key}
-                                        checked={visibleColumns.has(col.key)}
-                                        onCheckedChange={() => toggleColumn(col.key)}
-                                    >
-                                        {col.label}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" disabled={exporting}>
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Export
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>Export Options</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="w-full justify-start"
-                                    onClick={() => handleExport(true)}
-                                >
-                                    Export All Data
-                                </Button>
-                                {hasFilters && (
+        <>
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <FileText className="h-5 w-5" />
+                                Page Index
+                            </CardTitle>
+                            <CardDescription>
+                                {data?.total.toLocaleString()} pages {hasFilters ? '(filtered)' : 'indexed'}
+                            </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={resetColumnWidths}
+                                title="Reset column widths"
+                            >
+                                <RotateCcw className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm">
+                                        <Settings2 className="h-4 w-4 mr-2" />
+                                        Columns
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                    <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {ALL_COLUMNS.map((col) => (
+                                        <DropdownMenuCheckboxItem
+                                            key={col.key}
+                                            checked={visibleColumns.has(col.key)}
+                                            onCheckedChange={() => toggleColumn(col.key)}
+                                        >
+                                            {col.label}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" disabled={exporting}>
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Export
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         className="w-full justify-start"
-                                        onClick={() => handleExport(false)}
+                                        onClick={() => handleExport(true)}
                                     >
-                                        Export Filtered Only
+                                        Export All Data
                                     </Button>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Button variant="outline" size="sm" onClick={() => refetch()}>
-                            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                            Refresh
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Filter Bar */}
-                <div className="flex items-center gap-3 mt-4">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Search URL or title..."
-                            value={filters.search}
-                            onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
-                            className="pl-8 h-9"
-                        />
-                    </div>
-                    <Select
-                        value={filters.pageType}
-                        onValueChange={(v) => setFilters(f => ({ ...f, pageType: v === 'all' ? '' : v }))}
-                    >
-                        <SelectTrigger className="w-[150px] h-9">
-                            <SelectValue placeholder="Page Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Types</SelectItem>
-                            {PAGE_TYPES.map((type) => (
-                                <SelectItem key={type} value={type}>{type}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select
-                        value={filters.statusCode}
-                        onValueChange={(v) => setFilters(f => ({ ...f, statusCode: v === 'all' ? '' : v }))}
-                    >
-                        <SelectTrigger className="w-[120px] h-9">
-                            <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="200">200 OK</SelectItem>
-                            <SelectItem value="301">301 Redirect</SelectItem>
-                            <SelectItem value="302">302 Redirect</SelectItem>
-                            <SelectItem value="404">404 Not Found</SelectItem>
-                            <SelectItem value="500">500 Error</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    {hasFilters && (
-                        <Button variant="ghost" size="sm" onClick={clearFilters}>
-                            <X className="h-4 w-4 mr-1" />
-                            Clear
-                        </Button>
-                    )}
-                </div>
-            </CardHeader>
-            <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                    <Table ref={tableRef} style={{ tableLayout: 'fixed' }}>
-                        <TableHeader>
-                            <TableRow className="bg-muted/50">
-                                {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
-                                    <TableHead
-                                        key={col.key}
-                                        className="font-semibold text-xs whitespace-nowrap relative group"
-                                        style={{ width: columnWidths[col.key] || col.defaultWidth }}
-                                    >
-                                        <div className="pr-2">{col.label}</div>
-                                        {/* Resize handle */}
-                                        <div
-                                            className="absolute top-0 right-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500 active:bg-blue-600 transition-colors"
-                                            onMouseDown={(e) => startResize(col.key, e)}
-                                            style={{
-                                                opacity: resizing?.key === col.key ? 1 : 0,
-                                            }}
-                                        />
-                                        {/* Visible resize indicator on hover */}
-                                        <div
-                                            className="absolute top-0 right-0 w-[3px] h-full cursor-col-resize opacity-0 group-hover:opacity-100 bg-border hover:bg-blue-500 transition-all"
-                                            onMouseDown={(e) => startResize(col.key, e)}
-                                        />
-                                    </TableHead>
-                                ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {data?.pages?.length === 0 ? (
-                                <TableRow>
-                                    <TableCell
-                                        colSpan={visibleColumns.size}
-                                        className="text-center py-8 text-muted-foreground"
-                                    >
-                                        No pages match your filters
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                data?.pages?.map((page) => (
-                                    <TableRow key={page.id} className="hover:bg-muted/30 transition-colors">
-                                        {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
-                                            <TableCell
-                                                key={col.key}
-                                                className="py-2 overflow-hidden"
-                                                style={{ width: columnWidths[col.key] || col.defaultWidth }}
-                                            >
-                                                {renderCellValue(page, col.key)}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-
-                {/* Pagination */}
-                <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
-                    <div className="text-xs text-muted-foreground">
-                        Showing {data?.pages?.length ? page * PAGE_SIZE + 1 : 0}–{Math.min((page + 1) * PAGE_SIZE, data?.total || 0)} of {data?.total.toLocaleString()}
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage(p => Math.max(0, p - 1))}
-                            disabled={page === 0}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <div className="px-3 py-1 text-xs font-medium">
-                            Page {page + 1} of {totalPages || 1}
+                                    {hasFilters && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="w-full justify-start"
+                                            onClick={() => handleExport(false)}
+                                        >
+                                            Export Filtered Only
+                                        </Button>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Button variant="outline" size="sm" onClick={() => refetch()}>
+                                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                                Refresh
+                            </Button>
                         </div>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                            disabled={page >= totalPages - 1}
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
                     </div>
-                </div>
-            </CardContent>
-        </Card>
+
+                    {/* Filter Bar */}
+                    <div className="flex items-center gap-3 mt-4">
+                        <div className="relative flex-1 max-w-sm">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search URL or title..."
+                                value={filters.search}
+                                onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                                className="pl-8 h-9"
+                            />
+                        </div>
+                        <Select
+                            value={filters.pageType}
+                            onValueChange={(v) => setFilters(f => ({ ...f, pageType: v === 'all' ? '' : v }))}
+                        >
+                            <SelectTrigger className="w-[150px] h-9">
+                                <SelectValue placeholder="Page Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Types</SelectItem>
+                                {PAGE_TYPES.map((type) => (
+                                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={filters.statusCode}
+                            onValueChange={(v) => setFilters(f => ({ ...f, statusCode: v === 'all' ? '' : v }))}
+                        >
+                            <SelectTrigger className="w-[120px] h-9">
+                                <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="200">200 OK</SelectItem>
+                                <SelectItem value="301">301 Redirect</SelectItem>
+                                <SelectItem value="302">302 Redirect</SelectItem>
+                                <SelectItem value="404">404 Not Found</SelectItem>
+                                <SelectItem value="500">500 Error</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {hasFilters && (
+                            <Button variant="ghost" size="sm" onClick={clearFilters}>
+                                <X className="h-4 w-4 mr-1" />
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                        <Table ref={tableRef} style={{ tableLayout: 'fixed' }}>
+                            <TableHeader>
+                                <TableRow className="bg-muted/50">
+                                    {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
+                                        <TableHead
+                                            key={col.key}
+                                            className="font-semibold text-xs whitespace-nowrap relative group"
+                                            style={{ width: columnWidths[col.key] || col.defaultWidth }}
+                                        >
+                                            <div className="pr-2">{col.label}</div>
+                                            {/* Resize handle */}
+                                            <div
+                                                className="absolute top-0 right-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500 active:bg-blue-600 transition-colors"
+                                                onMouseDown={(e) => startResize(col.key, e)}
+                                                style={{
+                                                    opacity: resizing?.key === col.key ? 1 : 0,
+                                                }}
+                                            />
+                                            {/* Visible resize indicator on hover */}
+                                            <div
+                                                className="absolute top-0 right-0 w-[3px] h-full cursor-col-resize opacity-0 group-hover:opacity-100 bg-border hover:bg-blue-500 transition-all"
+                                                onMouseDown={(e) => startResize(col.key, e)}
+                                            />
+                                        </TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {data?.pages?.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={visibleColumns.size}
+                                            className="text-center py-8 text-muted-foreground"
+                                        >
+                                            No pages match your filters
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    data?.pages?.map((page) => (
+                                        <TableRow key={page.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => handleEditPage(page)}>
+                                            {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
+                                                <TableCell
+                                                    key={col.key}
+                                                    className="py-2 overflow-hidden"
+                                                    style={{ width: columnWidths[col.key] || col.defaultWidth }}
+                                                >
+                                                    {renderCellValue(page, col.key)}
+                                                </TableCell>
+                                            ))}
+                                            <TableCell className="py-2 w-[40px]">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleEditPage(page)
+                                                    }}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
+                        <div className="text-xs text-muted-foreground">
+                            Showing {data?.pages?.length ? page * PAGE_SIZE + 1 : 0}–{Math.min((page + 1) * PAGE_SIZE, data?.total || 0)} of {data?.total.toLocaleString()}
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPage(p => Math.max(0, p - 1))}
+                                disabled={page === 0}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <div className="px-3 py-1 text-xs font-medium">
+                                Page {page + 1} of {totalPages || 1}
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                                disabled={page >= totalPages - 1}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card >
+
+            {/* Edit Sheet */}
+            < PageEditSheet
+                page={editingPage}
+                open={editSheetOpen}
+                onOpenChange={setEditSheetOpen}
+            />
+        </>
     )
 }
