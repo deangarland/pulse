@@ -9,8 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import {
-    MapPin,
-    Stethoscope,
     Star,
     Pencil,
     Plus,
@@ -275,37 +273,26 @@ export default function Taxonomy() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Taxonomy</h1>
                 <p className="text-muted-foreground">
-                    Manage locations, procedures, and other classification data
+                    Manage schema.org mappings and page type classifications
                 </p>
             </div>
 
             <Card>
-                <Tabs defaultValue="locations" className="w-full">
+                <Tabs defaultValue="schema_org" className="w-full">
                     <CardHeader className="pb-0">
                         <TabsList>
-                            <TabsTrigger value="locations" className="flex items-center gap-2">
-                                <MapPin className="h-4 w-4" />
-                                Locations
-                            </TabsTrigger>
-                            <TabsTrigger value="procedures" className="flex items-center gap-2">
-                                <Stethoscope className="h-4 w-4" />
-                                Procedures
+                            <TabsTrigger value="schema_org" className="flex items-center gap-2">
+                                <Star className="h-4 w-4" />
+                                Schema.org Mappings
                             </TabsTrigger>
                         </TabsList>
                     </CardHeader>
                     <CardContent className="pt-6">
-                        <TabsContent value="locations" className="mt-0">
+                        <TabsContent value="schema_org" className="mt-0">
                             <TaxonomyTable
-                                tableName="locations"
-                                columns={['name', 'address', 'city', 'state', 'primary']}
-                                icon={MapPin}
-                            />
-                        </TabsContent>
-                        <TabsContent value="procedures" className="mt-0">
-                            <TaxonomyTable
-                                tableName="procedures"
-                                columns={['name', 'category', 'description', 'primary']}
-                                icon={Stethoscope}
+                                tableName="schema_org"
+                                columns={['page_type', 'schema_type', 'tier', 'auto_generate', 'reason']}
+                                icon={Star}
                             />
                         </TabsContent>
                     </CardContent>

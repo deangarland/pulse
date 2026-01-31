@@ -18,23 +18,28 @@ npx @railway/cli deployment up    # Manual deploy from current directory
 **Service**: pulse  
 
 ## Supabase Direct Access
-You have direct SQL access to Supabase via psql or the Supabase CLI.
+You have direct SQL access to Supabase via `db-run.js`:
+
+### Running SQL
+```bash
+# Run a query
+node db-run.js "SELECT * FROM accounts LIMIT 5"
+
+# Run a migration file  
+cat migrations/003_create_schema_org.sql | node db-run.js
+
+# DDL/DML statements
+node db-run.js "CREATE TABLE test (id uuid PRIMARY KEY)"
+```
 
 ### Database Tables
 Key tables you can query/modify:
 - `accounts` - Client accounts (id, hs_account_id, account_name)
-- `page_index` - Crawled pages (id, url, title, page_type, account_id)
-- `site_index` - Site crawl data
-- `locations` - Location taxonomy (name, address, city, state, primary)
-- `procedures` - Procedure taxonomy (name, category, description, primary)
+- `page_index` - Crawled pages (id, url, title, page_type, site_id)
+- `site_index` - Site crawl data (id, url, domain, account_id)
+- `schema_org` - Page type to schema.org mappings
 - `prompts` - AI prompts configuration
 - `answers` - AI-generated answers
-
-### Connection
-Use the Supabase connection string from environment or:
-```bash
-npx supabase db query "SELECT * FROM accounts LIMIT 5"
-```
 
 ## GitHub Repo
 - **Repo**: deangarland/pulse
