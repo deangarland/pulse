@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAccountStore } from '@/lib/account-store'
 import {
@@ -16,9 +17,13 @@ interface Account {
 }
 
 export function CustomerSelector() {
+    const [searchParams, setSearchParams] = useSearchParams()
     const [accounts, setAccounts] = useState<Account[]>([])
     const [loading, setLoading] = useState(true)
     const { selectedAccountId, setSelectedAccount } = useAccountStore()
+
+    // Initialize from URL cid param
+    const urlCid = searchParams.get('cid')
 
     useEffect(() => {
         async function fetchAccounts() {
@@ -34,10 +39,29 @@ export function CustomerSelector() {
 
             setAccounts(data || [])
             setLoading(false)
+
+            // If URL has cid, set it as selected
+            if (urlCid && data) {
+                const account = data.find(a => a.id === urlCid)
+                if (account) {
+                    setSelectedAccount(urlCid, account.account_name)
+                }
+            }
         }
 
         fetchAccounts()
-    }, [])
+    }, [urlCid, setSelectedAccount])
+
+    // Sync selected account to URL
+    useEffect(() => {
+        const params = new URLSearchParams(searchParams)
+        if (selectedAccountId) {
+            params.set('cid', selectedAccountId)
+        } else {
+            params.delete('cid')
+        }
+        setSearchParams(params, { replace: true })
+    }, [selectedAccountId, setSearchParams])
 
     const handleChange = (value: string) => {
         if (value === 'all') {
