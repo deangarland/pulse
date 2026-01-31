@@ -1,4 +1,4 @@
-import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar"
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/sonner"
@@ -9,9 +9,9 @@ export default function DashboardLayout() {
     return (
         <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>
+            <main className="flex-1 flex flex-col min-h-screen">
                 <header className="h-14 shrink-0 border-b bg-background">
-                    <div className="h-full max-w-7xl mx-auto flex items-center justify-between gap-2 px-4 lg:px-6">
+                    <div className="h-full flex items-center justify-between gap-2 px-4 lg:px-6">
                         <div className="flex items-center gap-2">
                             <SidebarTrigger className="-ml-1" />
                             <Separator orientation="vertical" className="mr-2 h-4" />
@@ -25,7 +25,7 @@ export default function DashboardLayout() {
                         <Outlet />
                     </div>
                 </div>
-            </SidebarInset>
+            </main>
             <Toaster />
         </SidebarProvider>
     )
