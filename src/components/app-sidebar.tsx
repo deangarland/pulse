@@ -59,6 +59,7 @@ const items = [
         icon: Settings,
         items: [
             { title: "Prompts", url: "/admin/prompts" },
+            { title: "Taxonomy", url: "/admin/taxonomy" },
         ]
     }
 ]

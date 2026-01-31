@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import {
     Table,
     TableBody,
@@ -142,8 +143,10 @@ interface Filters {
 
 export default function PageIndex() {
     const [searchParams, setSearchParams] = useSearchParams()
+    const { selectedAccountId, setSelectedAccount } = useAccountStore()
 
-    // Initialize from URL params
+    // Initialize from URL params (including cid for account)
+    const urlCid = searchParams.get('cid')
     const [page, setPage] = useState(() => parseInt(searchParams.get('page') || '0'))
     const [filters, setFilters] = useState<Filters>({
         search: searchParams.get('q') || '',
@@ -158,15 +161,29 @@ export default function PageIndex() {
     const columnWidthsRef = useRef<Record<string, number>>(columnWidths)
     const [exporting, setExporting] = useState(false)
 
-    // Sync URL with filter state
+    // Set account from URL if provided
+    useEffect(() => {
+        if (urlCid && urlCid !== selectedAccountId) {
+            // Fetch account name for the cid
+            supabase.from('accounts').select('account_name').eq('id', urlCid).single()
+                .then(({ data }) => {
+                    if (data) {
+                        setSelectedAccount(urlCid, data.account_name)
+                    }
+                })
+        }
+    }, [urlCid])
+
+    // Sync URL with filter state and selected account
     useEffect(() => {
         const params = new URLSearchParams()
+        if (selectedAccountId) params.set('cid', selectedAccountId)
         if (filters.search) params.set('q', filters.search)
         if (filters.pageType) params.set('type', filters.pageType)
         if (filters.statusCode) params.set('status', filters.statusCode)
         if (page > 0) params.set('page', page.toString())
         setSearchParams(params, { replace: true })
-    }, [filters, page, setSearchParams])
+    }, [filters, page, selectedAccountId, setSearchParams])
 
     // Edit sheet state
     const [editingPage, setEditingPage] = useState<any>(null)
