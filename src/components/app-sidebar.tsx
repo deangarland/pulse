@@ -71,7 +71,7 @@ export function AppSidebar() {
     const [searchParams] = useSearchParams()
 
     return (
-        <Sidebar collapsible="icon" className="w-56">
+        <Sidebar collapsible="icon">
             <SidebarHeader>
                 <div className="flex items-center gap-3 px-3 py-3">
                     <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">P</div>
