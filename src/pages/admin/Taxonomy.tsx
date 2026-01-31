@@ -7,6 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuCheckboxItem
+} from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import {
     Star,
@@ -15,7 +23,8 @@ import {
     Trash2,
     RefreshCw,
     Check,
-    X
+    X,
+    Settings2
 } from "lucide-react"
 
 // Editable row component
@@ -68,7 +77,7 @@ function EditableRow({
 // Generic table component
 function TaxonomyTable({
     tableName,
-    columns,
+    columns: defaultColumns,
     icon: Icon
 }: {
     tableName: string
@@ -78,6 +87,7 @@ function TaxonomyTable({
     const queryClient = useQueryClient()
     const [editingId, setEditingId] = useState<string | null>(null)
     const [addingNew, setAddingNew] = useState(false)
+    const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(defaultColumns))
 
     // Fetch data
     const { data, isLoading, refetch } = useQuery({
@@ -86,12 +96,26 @@ function TaxonomyTable({
             const { data, error } = await supabase
                 .from(tableName)
                 .select('*')
-                .order(columns[0] || 'id')
+                .order(defaultColumns[0] || 'id')
 
             if (error) throw error
             return data || []
         }
     })
+
+    // Get all available columns from data (excluding technical ones)
+    const allColumns = data && data.length > 0
+        ? Object.keys(data[0]).filter(k => !['id', 'created_at', 'updated_at'].includes(k))
+        : defaultColumns
+
+    const toggleColumn = (col: string) => {
+        setVisibleColumns(prev => {
+            const next = new Set(prev)
+            if (next.has(col)) next.delete(col)
+            else next.add(col)
+            return next
+        })
+    }
 
     // Update mutation
     const updateMutation = useMutation({
@@ -165,6 +189,9 @@ function TaxonomyTable({
         )
     }
 
+    // Columns to display (only visible ones, filtering from all available)
+    const displayColumns = allColumns.filter(col => visibleColumns.has(col))
+
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
@@ -173,6 +200,27 @@ function TaxonomyTable({
                     {data?.length || 0} items
                 </div>
                 <div className="flex gap-2">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                                <Settings2 className="h-4 w-4 mr-1" />
+                                Columns
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48 max-h-80 overflow-auto">
+                            <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {allColumns.map((col) => (
+                                <DropdownMenuCheckboxItem
+                                    key={col}
+                                    checked={visibleColumns.has(col)}
+                                    onCheckedChange={() => toggleColumn(col)}
+                                >
+                                    {col.replace(/_/g, ' ')}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button variant="outline" size="sm" onClick={() => refetch()}>
                         <RefreshCw className="h-4 w-4 mr-1" />
                         Refresh
@@ -188,7 +236,7 @@ function TaxonomyTable({
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            {columns.map((col) => (
+                            {displayColumns.map((col: string) => (
                                 <TableHead key={col} className="capitalize">
                                     {col.replace('_', ' ')}
                                 </TableHead>
@@ -200,7 +248,7 @@ function TaxonomyTable({
                         {addingNew && (
                             <EditableRow
                                 item={{}}
-                                columns={columns}
+                                columns={displayColumns}
                                 onSave={handleAdd}
                                 onCancel={() => setAddingNew(false)}
                                 isNew
@@ -211,13 +259,13 @@ function TaxonomyTable({
                                 <EditableRow
                                     key={item.id}
                                     item={item}
-                                    columns={columns}
+                                    columns={displayColumns}
                                     onSave={(data) => handleSave(item.id, data)}
                                     onCancel={() => setEditingId(null)}
                                 />
                             ) : (
                                 <TableRow key={item.id}>
-                                    {columns.map((col) => (
+                                    {displayColumns.map((col: string) => (
                                         <TableCell key={col}>
                                             {col === 'primary' ? (
                                                 item[col] ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
@@ -255,7 +303,7 @@ function TaxonomyTable({
                         ))}
                         {!data?.length && !addingNew && (
                             <TableRow>
-                                <TableCell colSpan={columns.length + 1} className="text-center py-8 text-muted-foreground">
+                                <TableCell colSpan={displayColumns.length + 1} className="text-center py-8 text-muted-foreground">
                                     No items yet
                                 </TableCell>
                             </TableRow>
