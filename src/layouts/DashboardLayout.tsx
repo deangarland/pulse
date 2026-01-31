@@ -10,7 +10,7 @@ export default function DashboardLayout() {
         <SidebarProvider>
             <div className="flex min-h-screen w-full">
                 <AppSidebar />
-                <main className="flex-1 flex flex-col">
+                <main className="flex-1 flex flex-col ml-56">
                     <header className="h-14 shrink-0 border-b bg-background">
                         <div className="h-full max-w-7xl mx-auto flex items-center justify-between gap-2 px-4 lg:px-6">
                             <div className="flex items-center gap-2">
