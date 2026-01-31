@@ -1,333 +1,154 @@
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuCheckboxItem
-} from "@/components/ui/dropdown-menu"
+import { DataTable, type ColumnDef } from "@/components/DataTable"
 import { toast } from "sonner"
-import {
-    Star,
-    Pencil,
-    Plus,
-    Trash2,
-    RefreshCw,
-    Check,
-    X,
-    Settings2
-} from "lucide-react"
+import { Trash2, Star } from "lucide-react"
 
-// Editable row component
-function EditableRow({
-    item,
-    columns,
-    onSave,
-    onCancel
-}: {
-    item: any
-    columns: string[]
-    onSave: (data: any) => void
-    onCancel: () => void
-    isNew?: boolean
-}) {
-    const [editData, setEditData] = useState(item)
-
-    return (
-        <TableRow>
-            {columns.map((col) => (
-                <TableCell key={col}>
-                    {col === 'primary' ? (
-                        <input
-                            type="checkbox"
-                            checked={editData[col] || false}
-                            onChange={(e) => setEditData({ ...editData, [col]: e.target.checked })}
-                            className="h-4 w-4"
-                        />
-                    ) : (
-                        <Input
-                            value={editData[col] || ''}
-                            onChange={(e) => setEditData({ ...editData, [col]: e.target.value })}
-                            className="h-8"
-                        />
-                    )}
-                </TableCell>
-            ))}
-            <TableCell className="flex gap-1">
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onSave(editData)}>
-                    <Check className="h-4 w-4 text-green-600" />
-                </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onCancel}>
-                    <X className="h-4 w-4 text-red-600" />
-                </Button>
-            </TableCell>
-        </TableRow>
-    )
+// Table configurations
+const TABLE_CONFIGS: Record<string, { columns: ColumnDef[], orderBy: string }> = {
+    locations_procedures: {
+        orderBy: 'location_name',
+        columns: [
+            { key: 'location_name', label: 'Location', defaultVisible: true, defaultWidth: 200 },
+            { key: 'city', label: 'City', defaultVisible: true, defaultWidth: 120 },
+            { key: 'state', label: 'State', defaultVisible: true, defaultWidth: 80 },
+            { key: 'phone_number', label: 'Phone', defaultVisible: true, defaultWidth: 130 },
+            { key: 'street', label: 'Street', defaultVisible: false, defaultWidth: 200 },
+            { key: 'postal', label: 'Postal', defaultVisible: false, defaultWidth: 80 },
+            { key: 'url', label: 'URL', defaultVisible: false, defaultWidth: 200 },
+            { key: 'gbp_url', label: 'GBP URL', defaultVisible: false, defaultWidth: 200 },
+            { key: 'hours', label: 'Hours', defaultVisible: false, defaultWidth: 150 },
+            {
+                key: 'is_primary', label: 'Primary', defaultVisible: true, defaultWidth: 70,
+                render: (v) => v ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
+            },
+        ]
+    },
+    procedures: {
+        orderBy: 'procedure_name',
+        columns: [
+            { key: 'procedure_name', label: 'Procedure', defaultVisible: true, defaultWidth: 200 },
+            { key: 'procedure_type', label: 'Type', defaultVisible: true, defaultWidth: 120 },
+            { key: 'short_description', label: 'Short Desc', defaultVisible: true, defaultWidth: 250 },
+            { key: 'description', label: 'Description', defaultVisible: false, defaultWidth: 300 },
+            {
+                key: 'active', label: 'Active', defaultVisible: true, defaultWidth: 70,
+                render: (v) => v ? 'Yes' : 'No'
+            },
+            { key: 'tags', label: 'Tags', defaultVisible: false, defaultWidth: 150 },
+        ]
+    },
+    categories: {
+        orderBy: 'category',
+        columns: [
+            { key: 'category', label: 'Category', defaultVisible: true, defaultWidth: 200 },
+            { key: 'type', label: 'Type', defaultVisible: true, defaultWidth: 120 },
+            { key: 'description', label: 'Description', defaultVisible: true, defaultWidth: 250 },
+            { key: 'long_description', label: 'Long Desc', defaultVisible: false, defaultWidth: 300 },
+            {
+                key: 'active', label: 'Active', defaultVisible: true, defaultWidth: 70,
+                render: (v) => v ? 'Yes' : 'No'
+            },
+        ]
+    },
+    body_areas: {
+        orderBy: 'body_area',
+        columns: [
+            { key: 'body_area', label: 'Body Area', defaultVisible: true, defaultWidth: 250 },
+        ]
+    },
+    conditions: {
+        orderBy: 'condition',
+        columns: [
+            { key: 'condition', label: 'Condition', defaultVisible: true, defaultWidth: 200 },
+            { key: 'slug', label: 'Slug', defaultVisible: true, defaultWidth: 150 },
+            { key: 'description', label: 'Description', defaultVisible: true, defaultWidth: 300 },
+        ]
+    },
+    schema_org: {
+        orderBy: 'page_type',
+        columns: [
+            { key: 'page_type', label: 'Page Type', defaultVisible: true, defaultWidth: 130 },
+            { key: 'schema_type', label: 'Schema Type', defaultVisible: true, defaultWidth: 150 },
+            { key: 'tier', label: 'Tier', defaultVisible: true, defaultWidth: 80 },
+            {
+                key: 'auto_generate', label: 'Auto', defaultVisible: true, defaultWidth: 60,
+                render: (v) => v ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
+            },
+            { key: 'reason', label: 'Reason', defaultVisible: true, defaultWidth: 250 },
+            {
+                key: 'linked_schemas', label: 'Linked Schemas', defaultVisible: true, defaultWidth: 180,
+                render: (v) => Array.isArray(v) ? v.join(', ') : (v || '-')
+            },
+        ]
+    }
 }
 
-// Generic table component
-function TaxonomyTable({
-    tableName,
-    columns: defaultColumns,
-    icon: Icon
-}: {
-    tableName: string
-    columns: string[]
-    icon: any
-}) {
+// Taxonomy table wrapper with CRUD
+function TaxonomyTableWithCRUD({ tableName }: { tableName: string }) {
     const queryClient = useQueryClient()
-    const [editingId, setEditingId] = useState<string | null>(null)
-    const [addingNew, setAddingNew] = useState(false)
-    const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(defaultColumns))
+    const config = TABLE_CONFIGS[tableName]
 
     // Fetch data
-    const { data, isLoading, refetch } = useQuery({
+    const { data = [], isLoading, refetch } = useQuery({
         queryKey: ['taxonomy', tableName],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from(tableName)
                 .select('*')
-                .order(defaultColumns[0] || 'id')
-
+                .order(config.orderBy)
             if (error) throw error
             return data || []
         }
     })
 
-    // Get all available columns from data (excluding technical ones)
-    const allColumns = data && data.length > 0
-        ? Object.keys(data[0]).filter(k => !['id', 'created_at', 'updated_at'].includes(k))
-        : defaultColumns
-
-    const toggleColumn = (col: string) => {
-        setVisibleColumns(prev => {
-            const next = new Set(prev)
-            if (next.has(col)) next.delete(col)
-            else next.add(col)
-            return next
-        })
-    }
-
-    // Update mutation
-    const updateMutation = useMutation({
-        mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const { error } = await supabase
-                .from(tableName)
-                .update(data)
-                .eq('id', id)
-
-            if (error) throw error
-        },
-        onSuccess: () => {
-            toast.success('Updated successfully')
-            queryClient.invalidateQueries({ queryKey: ['taxonomy', tableName] })
-            setEditingId(null)
-        },
-        onError: (err) => toast.error(`Update failed: ${err.message}`)
-    })
-
-    // Insert mutation
-    const insertMutation = useMutation({
-        mutationFn: async (data: any) => {
-            const { error } = await supabase
-                .from(tableName)
-                .insert(data)
-
-            if (error) throw error
-        },
-        onSuccess: () => {
-            toast.success('Added successfully')
-            queryClient.invalidateQueries({ queryKey: ['taxonomy', tableName] })
-            setAddingNew(false)
-        },
-        onError: (err) => toast.error(`Add failed: ${err.message}`)
-    })
-
     // Delete mutation
     const deleteMutation = useMutation({
         mutationFn: async (id: string) => {
-            const { error } = await supabase
-                .from(tableName)
-                .delete()
-                .eq('id', id)
-
+            const { error } = await supabase.from(tableName).delete().eq('id', id)
             if (error) throw error
         },
         onSuccess: () => {
             toast.success('Deleted successfully')
             queryClient.invalidateQueries({ queryKey: ['taxonomy', tableName] })
         },
-        onError: (err) => toast.error(`Delete failed: ${err.message}`)
+        onError: (err: Error) => toast.error(`Delete failed: ${err.message}`)
     })
 
-    const handleSave = (id: string, data: any) => {
-        const { id: _, created_at, ...updateData } = data
-        updateMutation.mutate({ id, data: updateData })
+    const handleDelete = (row: any) => {
+        if (confirm('Delete this item?')) {
+            deleteMutation.mutate(row.id)
+        }
     }
-
-    const handleAdd = (data: any) => {
-        const { id, created_at, ...insertData } = data
-        insertMutation.mutate(insertData)
-    }
-
-    if (isLoading) {
-        return (
-            <div className="space-y-2">
-                {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-10 w-full" />
-                ))}
-            </div>
-        )
-    }
-
-    // Columns to display (only visible ones, filtering from all available)
-    const displayColumns = allColumns.filter(col => visibleColumns.has(col))
 
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Icon className="h-4 w-4" />
-                    {data?.length || 0} items
-                </div>
-                <div className="flex gap-2">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm">
-                                <Settings2 className="h-4 w-4 mr-1" />
-                                Columns
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48 max-h-80 overflow-auto">
-                            <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {allColumns.map((col) => (
-                                <DropdownMenuCheckboxItem
-                                    key={col}
-                                    checked={visibleColumns.has(col)}
-                                    onCheckedChange={() => toggleColumn(col)}
-                                >
-                                    {col.replace(/_/g, ' ')}
-                                </DropdownMenuCheckboxItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button variant="outline" size="sm" onClick={() => refetch()}>
-                        <RefreshCw className="h-4 w-4 mr-1" />
-                        Refresh
-                    </Button>
-                    <Button size="sm" onClick={() => setAddingNew(true)} disabled={addingNew}>
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add New
+        <DataTable
+            data={data}
+            columns={config.columns}
+            loading={isLoading}
+            storageKey={`taxonomy_${tableName}`}
+            emptyMessage="No items yet"
+            onRefresh={() => refetch()}
+            toolbar={
+                <span className="text-sm text-muted-foreground">
+                    {data.length} items
+                </span>
+            }
+            rowActions={(row) => (
+                <div className="flex gap-1">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600 hover:text-red-700" onClick={() => handleDelete(row)}>
+                        <Trash2 className="h-4 w-4" />
                     </Button>
                 </div>
-            </div>
-
-            <div className="border rounded-lg overflow-hidden">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            {displayColumns.map((col: string) => (
-                                <TableHead key={col} className="capitalize">
-                                    {col.replace('_', ' ')}
-                                </TableHead>
-                            ))}
-                            <TableHead className="w-[100px]">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {addingNew && (
-                            <EditableRow
-                                item={{}}
-                                columns={displayColumns}
-                                onSave={handleAdd}
-                                onCancel={() => setAddingNew(false)}
-                                isNew
-                            />
-                        )}
-                        {data?.map((item: any) => (
-                            editingId === item.id ? (
-                                <EditableRow
-                                    key={item.id}
-                                    item={item}
-                                    columns={displayColumns}
-                                    onSave={(data) => handleSave(item.id, data)}
-                                    onCancel={() => setEditingId(null)}
-                                />
-                            ) : (
-                                <TableRow key={item.id}>
-                                    {displayColumns.map((col: string) => {
-                                        const value = item[col]
-                                        let displayValue: React.ReactNode = '-'
-
-                                        if (col === 'primary' || col === 'is_primary' || col === 'auto_generate') {
-                                            displayValue = value ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
-                                        } else if (col === 'active') {
-                                            displayValue = value ? 'Yes' : 'No'
-                                        } else if (Array.isArray(value)) {
-                                            displayValue = value.join(', ')
-                                        } else if (typeof value === 'object' && value !== null) {
-                                            displayValue = JSON.stringify(value)
-                                        } else if (value !== null && value !== undefined && value !== '') {
-                                            displayValue = String(value)
-                                        }
-
-                                        return (
-                                            <TableCell key={col}>
-                                                <span className="truncate max-w-[250px] block">
-                                                    {displayValue}
-                                                </span>
-                                            </TableCell>
-                                        )
-                                    })}
-                                    <TableCell className="flex gap-1">
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-7 w-7"
-                                            onClick={() => setEditingId(item.id)}
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-7 w-7 text-red-600 hover:text-red-700"
-                                            onClick={() => {
-                                                if (confirm('Delete this item?')) {
-                                                    deleteMutation.mutate(item.id)
-                                                }
-                                            }}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            )
-                        ))}
-                        {!data?.length && !addingNew && (
-                            <TableRow>
-                                <TableCell colSpan={displayColumns.length + 1} className="text-center py-8 text-muted-foreground">
-                                    No items yet
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-        </div>
+            )}
+        />
     )
 }
 
+// Main component
 export default function Taxonomy() {
     return (
         <div className="space-y-6">
@@ -352,46 +173,22 @@ export default function Taxonomy() {
                     </CardHeader>
                     <CardContent className="pt-6">
                         <TabsContent value="locations" className="mt-0">
-                            <TaxonomyTable
-                                tableName="locations_procedures"
-                                columns={['location_name', 'city', 'state', 'phone_number', 'is_primary']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="locations_procedures" />
                         </TabsContent>
                         <TabsContent value="procedures" className="mt-0">
-                            <TaxonomyTable
-                                tableName="procedures"
-                                columns={['procedure_name', 'procedure_type', 'short_description', 'active']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="procedures" />
                         </TabsContent>
                         <TabsContent value="categories" className="mt-0">
-                            <TaxonomyTable
-                                tableName="categories"
-                                columns={['category', 'type', 'description', 'active']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="categories" />
                         </TabsContent>
                         <TabsContent value="body_areas" className="mt-0">
-                            <TaxonomyTable
-                                tableName="body_areas"
-                                columns={['body_area']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="body_areas" />
                         </TabsContent>
                         <TabsContent value="conditions" className="mt-0">
-                            <TaxonomyTable
-                                tableName="conditions"
-                                columns={['condition', 'description']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="conditions" />
                         </TabsContent>
                         <TabsContent value="schema_org" className="mt-0">
-                            <TaxonomyTable
-                                tableName="schema_org"
-                                columns={['page_type', 'schema_type', 'tier', 'auto_generate', 'reason']}
-                                icon={Star}
-                            />
+                            <TaxonomyTableWithCRUD tableName="schema_org" />
                         </TabsContent>
                     </CardContent>
                 </Tabs>

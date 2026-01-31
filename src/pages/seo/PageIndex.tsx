@@ -228,16 +228,37 @@ export default function PageIndex() {
         return query
     }
 
+    // Get selected account from URL
+    const selectedAccountId = searchParams.get('cid')
+
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode],
+        queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode, selectedAccountId],
         queryFn: async () => {
             const from = page * PAGE_SIZE
             const to = from + PAGE_SIZE - 1
+
+            // If account is selected, first get site_ids for that account
+            let siteIds: string[] | null = null
+            if (selectedAccountId) {
+                const { data: sites } = await supabase
+                    .from('site_index')
+                    .select('id')
+                    .eq('account_id', selectedAccountId)
+                siteIds = sites?.map(s => s.id) || []
+
+                // If no sites for this account, return empty
+                if (siteIds.length === 0) {
+                    return { pages: [], total: 0 }
+                }
+            }
 
             // Build count query
             let countQuery = supabase
                 .from('page_index')
                 .select('*', { count: 'exact', head: true })
+            if (siteIds) {
+                countQuery = countQuery.in('site_id', siteIds)
+            }
             countQuery = buildQuery(countQuery)
             const { count } = await countQuery
 
@@ -245,6 +266,9 @@ export default function PageIndex() {
             let dataQuery = supabase
                 .from('page_index')
                 .select('*')
+            if (siteIds) {
+                dataQuery = dataQuery.in('site_id', siteIds)
+            }
             dataQuery = buildQuery(dataQuery)
             const { data, error } = await dataQuery
                 .range(from, to)
@@ -261,9 +285,24 @@ export default function PageIndex() {
     const handleExport = async (exportAll: boolean) => {
         setExporting(true)
         try {
+            // Get site IDs for selected account
+            let siteIds: string[] | null = null
+            if (selectedAccountId) {
+                const { data: sites } = await supabase
+                    .from('site_index')
+                    .select('id')
+                    .eq('account_id', selectedAccountId)
+                siteIds = sites?.map(s => s.id) || []
+            }
+
             let query = supabase
                 .from('page_index')
                 .select('*')
+
+            // Apply account filter
+            if (siteIds && siteIds.length > 0) {
+                query = query.in('site_id', siteIds)
+            }
 
             if (!exportAll) {
                 query = buildQuery(query)
