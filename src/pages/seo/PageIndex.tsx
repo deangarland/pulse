@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import {
     Table,
     TableBody,
@@ -228,8 +229,8 @@ export default function PageIndex() {
         return query
     }
 
-    // Get selected account from URL
-    const selectedAccountId = searchParams.get('cid')
+    // Get selected account UUID from store (not from URL which has hs_account_id)
+    const { selectedAccountId } = useAccountStore()
 
     const { data, isLoading, error, refetch } = useQuery({
         queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode, selectedAccountId],
