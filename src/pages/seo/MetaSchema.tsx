@@ -10,7 +10,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, Tag } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, Tag, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Page {
@@ -426,9 +426,19 @@ ${schema?.overall_reasoning || 'N/A'}
                         <Button
                             onClick={() => page && generateMutation.mutate(page.id)}
                             disabled={!selectedPage || generateMutation.isPending}
+                            className="min-w-[120px]"
                         >
-                            <Sparkles className={`h-4 w-4 mr-2 ${generateMutation.isPending ? 'animate-pulse' : ''}`} />
-                            Generate
+                            {generateMutation.isPending ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="h-4 w-4 mr-2" />
+                                    Generate
+                                </>
+                            )}
                         </Button>
                     </div>
                 </CardHeader>
