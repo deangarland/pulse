@@ -86,7 +86,7 @@ function TaxonomyTable({
             const { data, error } = await supabase
                 .from(tableName)
                 .select('*')
-                .order('name')
+                .order(columns[0] || 'id')
 
             if (error) throw error
             return data || []
