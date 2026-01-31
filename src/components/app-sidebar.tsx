@@ -17,7 +17,7 @@ import {
     CollapsibleTrigger,
     CollapsibleContent,
 } from "@/components/ui/collapsible"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useSearchParams } from "react-router-dom"
 
 // Menu items
 const items = [
@@ -66,6 +66,7 @@ const items = [
 
 export function AppSidebar() {
     const location = useLocation()
+    const [searchParams] = useSearchParams()
 
     return (
         <Sidebar collapsible="icon" className="w-56">
@@ -91,7 +92,7 @@ export function AppSidebar() {
                                         {group.items.map((item) => (
                                             <SidebarMenuItem key={item.title}>
                                                 <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                                                    <Link to={item.url}>
+                                                    <Link to={`${item.url}${searchParams.get('cid') ? `?cid=${searchParams.get('cid')}` : ''}`}>
                                                         <span>{item.title}</span>
                                                     </Link>
                                                 </SidebarMenuButton>
