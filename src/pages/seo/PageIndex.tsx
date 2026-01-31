@@ -142,7 +142,7 @@ interface Filters {
 export default function PageIndex() {
     const [page, setPage] = useState(0)
     const [filters, setFilters] = useState<Filters>({ search: '', pageType: '', statusCode: '' })
-    const [debouncedSearch, setDebouncedSearch] = useState('')
+    const [searchInput, setSearchInput] = useState('')
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
         new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
     )
@@ -164,14 +164,17 @@ export default function PageIndex() {
         columnWidthsRef.current = columnWidths
     }, [columnWidths])
 
-    // Debounce search input
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedSearch(filters.search)
-            setPage(0) // Reset to first page on search
-        }, 300)
-        return () => clearTimeout(timer)
-    }, [filters.search])
+    // Handle search on Enter or button click
+    const handleSearch = () => {
+        setFilters(f => ({ ...f, search: searchInput }))
+        setPage(0)
+    }
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSearch()
+        }
+    }
 
     // Reset page when filters change
     useEffect(() => {
@@ -186,8 +189,8 @@ export default function PageIndex() {
     const buildQuery = (baseQuery: any) => {
         let query = baseQuery
 
-        if (debouncedSearch) {
-            query = query.or(`url.ilike.%${debouncedSearch}%,title.ilike.%${debouncedSearch}%`)
+        if (filters.search) {
+            query = query.or(`url.ilike.%${filters.search}%,title.ilike.%${filters.search}%`)
         }
         if (filters.pageType) {
             query = query.eq('page_type', filters.pageType)
@@ -200,7 +203,7 @@ export default function PageIndex() {
     }
 
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['pages', page, debouncedSearch, filters.pageType, filters.statusCode],
+        queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode],
         queryFn: async () => {
             const from = page * PAGE_SIZE
             const to = from + PAGE_SIZE - 1
@@ -262,6 +265,7 @@ export default function PageIndex() {
     // Clear all filters
     const clearFilters = () => {
         setFilters({ search: '', pageType: '', statusCode: '' })
+        setSearchInput('')
     }
 
     const hasFilters = filters.search || filters.pageType || filters.statusCode
@@ -495,14 +499,25 @@ export default function PageIndex() {
 
                     {/* Filter Bar */}
                     <div className="flex items-center gap-3 mt-4">
-                        <div className="relative flex-1 max-w-sm">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search URL or title..."
-                                value={filters.search}
-                                onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
-                                className="pl-8 h-9"
-                            />
+                        <div className="relative flex-1 max-w-sm flex gap-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search URL or title..."
+                                    value={searchInput}
+                                    onChange={(e) => setSearchInput(e.target.value)}
+                                    onKeyDown={handleSearchKeyDown}
+                                    className="pl-8 h-9"
+                                />
+                            </div>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-9"
+                                onClick={handleSearch}
+                            >
+                                Search
+                            </Button>
                         </div>
                         <Select
                             value={filters.pageType}
