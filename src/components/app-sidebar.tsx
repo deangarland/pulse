@@ -105,8 +105,13 @@ export function AppSidebar() {
                 ))}
             </SidebarContent>
             <SidebarFooter>
-                <div className="p-4 text-xs text-muted-foreground">
-                    v1.0.0
+                <div className="p-4 flex flex-col items-center gap-2">
+                    <img
+                        src="/dean-garland-logo.png"
+                        alt="Dean Garland"
+                        className="h-8 opacity-60"
+                    />
+                    <span className="text-xs text-muted-foreground">v1.0.0</span>
                 </div>
             </SidebarFooter>
             <SidebarRail />
