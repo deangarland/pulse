@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { DataTable, type ColumnDef } from "@/components/DataTable"
+import { LocationsTable } from "@/components/LocationsTable"
 import { toast } from "sonner"
 import { Trash2, Star } from "lucide-react"
 
@@ -16,6 +17,13 @@ const TABLE_CONFIGS: Record<string, { columns: ColumnDef[], orderBy: string }> =
             { key: 'city', label: 'City', defaultVisible: true, defaultWidth: 120 },
             { key: 'state', label: 'State', defaultVisible: true, defaultWidth: 80 },
             { key: 'phone_number', label: 'Phone', defaultVisible: true, defaultWidth: 130 },
+            {
+                key: 'page_id',
+                label: 'Linked Page',
+                defaultVisible: true,
+                defaultWidth: 180,
+                render: (v) => v ? <span className="text-xs text-muted-foreground truncate">{v.substring(0, 8)}...</span> : <span className="text-xs text-orange-500">Not linked</span>
+            },
             { key: 'street', label: 'Street', defaultVisible: false, defaultWidth: 200 },
             { key: 'postal', label: 'Postal', defaultVisible: false, defaultWidth: 80 },
             { key: 'url', label: 'URL', defaultVisible: false, defaultWidth: 200 },
@@ -173,7 +181,7 @@ export default function Taxonomy() {
                     </CardHeader>
                     <CardContent className="pt-6">
                         <TabsContent value="locations" className="mt-0">
-                            <TaxonomyTableWithCRUD tableName="locations_procedures" />
+                            <LocationsTable />
                         </TabsContent>
                         <TabsContent value="procedures" className="mt-0">
                             <TaxonomyTableWithCRUD tableName="procedures" />
