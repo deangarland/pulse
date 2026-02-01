@@ -95,19 +95,43 @@ function PriorityBadge({ priority }: { priority: string }) {
     )
 }
 
+// Character count display with color coding
+// Red: over max | Green: within 10% of max | Black: under
+function CharacterCount({ text, maxLength }: { text: string | null; maxLength: number }) {
+    if (!text) return null
+
+    const length = text.length
+    const idealMin = Math.floor(maxLength * 0.9) // 10% below max
+
+    let colorClass = 'text-slate-600' // Default: under
+    if (length > maxLength) {
+        colorClass = 'text-red-600 font-medium' // Over limit
+    } else if (length >= idealMin) {
+        colorClass = 'text-green-600 font-medium' // Within 10% - ideal
+    }
+
+    return (
+        <span className={`text-xs ${colorClass}`}>
+            ({length}/{maxLength})
+        </span>
+    )
+}
+
 // Before/After comparison row with copy button
 function ComparisonRow({
     label,
     before,
     after,
     reasoning,
-    icon: Icon
+    icon: Icon,
+    maxLength
 }: {
     label: string
     before: string | null
     after: string | null
     reasoning?: string
     icon?: React.ComponentType<{ className?: string }>
+    maxLength?: number
 }) {
     const IconComponent = Icon || Tag
     const hasChange = before !== after
@@ -128,6 +152,7 @@ function ComparisonRow({
                 <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                     <IconComponent className="h-3.5 w-3.5" />
                     {label}
+                    {maxLength && <CharacterCount text={before} maxLength={maxLength} />}
                 </div>
                 <div className="text-sm">
                     {before || <span className="text-muted-foreground italic">Not set</span>}
@@ -139,6 +164,7 @@ function ComparisonRow({
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         {hasChange && <span className="text-green-600">✓ Optimized</span>}
+                        {maxLength && after && <CharacterCount text={after} maxLength={maxLength} />}
                     </div>
                     {after && (
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyToClipboard}>
@@ -484,12 +510,14 @@ ${schema?.overall_reasoning || 'N/A'}
                                 before={page.meta_tags?.title || page.title}
                                 after={page.meta_recommendation?.title?.recommended || null}
                                 reasoning={page.meta_recommendation?.title?.reasoning}
+                                maxLength={60}
                             />
                             <ComparisonRow
                                 label="Meta Description"
                                 before={page.meta_tags?.description || null}
                                 after={page.meta_recommendation?.description?.recommended || null}
                                 reasoning={page.meta_recommendation?.description?.reasoning}
+                                maxLength={160}
                             />
                         </CardContent>
                     </Card>
