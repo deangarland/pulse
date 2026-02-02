@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAccountStore } from '@/lib/account-store'
+import { DataTable, type ColumnDef } from "@/components/DataTable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,20 +24,12 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Loader2, Link2, MoreHorizontal, Pencil, Trash2, ExternalLink } from "lucide-react"
+import { Plus, Loader2, Link2, MoreHorizontal, Pencil, Trash2, ExternalLink, X } from "lucide-react"
 import { toast } from "sonner"
 
 interface LinkPlanEntry {
@@ -95,8 +88,15 @@ function getStatusStyle(status: string) {
 }
 
 function formatMonth(dateStr: string) {
+    if (!dateStr) return '-'
     const date = new Date(dateStr)
     return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+}
+
+function formatDate(dateStr: string | null) {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
 }
 
 export default function LinkPlan() {
@@ -106,6 +106,7 @@ export default function LinkPlan() {
     const [selectedAccount, setSelectedAccount] = useState<string>('')
     const [selectedQuarter, setSelectedQuarter] = useState<string>('')
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString())
+    const [selectedStatus, setSelectedStatus] = useState<string>('')
     const [isAddOpen, setIsAddOpen] = useState(false)
     const [editingEntry, setEditingEntry] = useState<LinkPlanEntry | null>(null)
 
@@ -115,11 +116,14 @@ export default function LinkPlan() {
         type: 'Content Placement - Standard',
         publisher: '',
         publisher_da: '',
+        page_authority: '',
         destination_url: '',
         anchor_text: '',
         status: 'planned',
         notes: '',
-        live_link: ''
+        live_link: '',
+        source_url: '',
+        link_type: 'dofollow'
     })
 
     // Fetch accounts
@@ -135,8 +139,7 @@ export default function LinkPlan() {
         }
     })
 
-    // Set selected account from global context (useAccountStore has the UUID)
-    // Sync whenever the global store changes
+    // Set selected account from global context
     useEffect(() => {
         if (globalAccountId) {
             setSelectedAccount(globalAccountId)
@@ -144,14 +147,15 @@ export default function LinkPlan() {
     }, [globalAccountId])
 
     // Fetch link plans
-    const { data: linkPlans, isLoading } = useQuery({
-        queryKey: ['link-plans', selectedAccount, selectedQuarter, selectedYear],
+    const { data: linkPlans, isLoading, refetch } = useQuery({
+        queryKey: ['link-plans', selectedAccount, selectedQuarter, selectedYear, selectedStatus],
         queryFn: async () => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
             const params = new URLSearchParams()
             if (selectedAccount) params.append('account_id', selectedAccount)
-            if (selectedQuarter) params.append('quarter', selectedQuarter)
+            if (selectedQuarter && selectedQuarter !== '__all__') params.append('quarter', selectedQuarter)
             if (selectedYear) params.append('year', selectedYear)
+            if (selectedStatus && selectedStatus !== '__all__') params.append('status', selectedStatus)
 
             const response = await fetch(`${apiUrl}/api/link-plan?${params}`)
             if (!response.ok) throw new Error('Failed to fetch link plans')
@@ -173,13 +177,19 @@ export default function LinkPlan() {
                     type: data.type,
                     publisher: data.publisher || null,
                     publisher_da: data.publisher_da ? parseInt(data.publisher_da) : null,
+                    page_authority: data.page_authority ? parseInt(data.page_authority) : null,
                     destination_url: data.destination_url || null,
                     anchor_text: data.anchor_text || null,
                     status: data.status,
-                    notes: data.notes || null
+                    notes: data.notes || null,
+                    source_url: data.source_url || null,
+                    link_type: data.link_type || 'dofollow'
                 })
             })
-            if (!response.ok) throw new Error('Failed to create link plan')
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error || 'Failed to create link plan')
+            }
             return response.json()
         },
         onSuccess: () => {
@@ -195,14 +205,15 @@ export default function LinkPlan() {
 
     // Update mutation
     const updateMutation = useMutation({
-        mutationFn: async ({ id, data }: { id: string, data: Partial<typeof formData> }) => {
+        mutationFn: async ({ id, data }: { id: string, data: typeof formData }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${apiUrl}/api/link-plan/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...data,
-                    publisher_da: data.publisher_da ? parseInt(data.publisher_da as string) : null
+                    publisher_da: data.publisher_da ? parseInt(data.publisher_da as string) : null,
+                    page_authority: data.page_authority ? parseInt(data.page_authority as string) : null
                 })
             })
             if (!response.ok) throw new Error('Failed to update link plan')
@@ -262,11 +273,14 @@ export default function LinkPlan() {
             type: 'Content Placement - Standard',
             publisher: '',
             publisher_da: '',
+            page_authority: '',
             destination_url: '',
             anchor_text: '',
             status: 'planned',
             notes: '',
-            live_link: ''
+            live_link: '',
+            source_url: '',
+            link_type: 'dofollow'
         })
     }
 
@@ -276,11 +290,14 @@ export default function LinkPlan() {
             type: entry.type || 'Content Placement - Standard',
             publisher: entry.publisher || '',
             publisher_da: entry.publisher_da?.toString() || '',
+            page_authority: entry.page_authority?.toString() || '',
             destination_url: entry.destination_url || '',
             anchor_text: entry.anchor_text || '',
             status: entry.status,
             notes: entry.notes || '',
-            live_link: entry.live_link || ''
+            live_link: entry.live_link || '',
+            source_url: entry.source_url || '',
+            link_type: entry.link_type || 'dofollow'
         })
         setEditingEntry(entry)
     }
@@ -298,23 +315,271 @@ export default function LinkPlan() {
         }
     }
 
-    // Generate year options (current year -1 to +2)
+    function clearFilters() {
+        setSelectedQuarter('')
+        setSelectedStatus('')
+    }
+
+    const hasFilters = selectedQuarter || selectedStatus
+
+    // Generate year options
     const currentYear = new Date().getFullYear()
     const yearOptions = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2]
+
+    // Define columns for DataTable
+    const columns: ColumnDef[] = [
+        {
+            key: 'target_month',
+            label: 'Month',
+            defaultVisible: true,
+            defaultWidth: 120,
+            sortable: true,
+            render: (value) => <span className="font-medium">{formatMonth(value)}</span>
+        },
+        {
+            key: 'status',
+            label: 'Status',
+            defaultVisible: true,
+            defaultWidth: 100,
+            sortable: true,
+            render: (value, row) => (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Badge className={`cursor-pointer ${getStatusStyle(value)}`}>
+                            {value}
+                        </Badge>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        {STATUS_OPTIONS.map(s => (
+                            <DropdownMenuItem
+                                key={s.value}
+                                onClick={() => quickStatusMutation.mutate({ id: row.id, status: s.value })}
+                            >
+                                <Badge className={`mr-2 ${s.color}`}>{s.label}</Badge>
+                            </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            )
+        },
+        {
+            key: 'publisher',
+            label: 'Publisher',
+            defaultVisible: true,
+            defaultWidth: 150,
+            sortable: true,
+            render: (value) => value || <span className="text-muted-foreground">TBD</span>
+        },
+        {
+            key: 'publisher_da',
+            label: 'DA',
+            defaultVisible: true,
+            defaultWidth: 60,
+            sortable: true,
+            render: (value) => value || '-'
+        },
+        {
+            key: 'page_authority',
+            label: 'PA',
+            defaultVisible: true,
+            defaultWidth: 60,
+            sortable: true,
+            render: (value) => value || '-'
+        },
+        {
+            key: 'destination_url',
+            label: 'Destination URL',
+            defaultVisible: true,
+            defaultWidth: 200,
+            sortable: false,
+            render: (value) => {
+                if (!value) return <span className="text-muted-foreground">-</span>
+                try {
+                    return (
+                        <a
+                            href={value}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline flex items-center gap-1 text-xs"
+                        >
+                            {new URL(value).pathname}
+                            <ExternalLink className="h-3 w-3" />
+                        </a>
+                    )
+                } catch {
+                    return value
+                }
+            }
+        },
+        {
+            key: 'anchor_text',
+            label: 'Anchor',
+            defaultVisible: true,
+            defaultWidth: 150,
+            sortable: true,
+            render: (value) => value || '-'
+        },
+        {
+            key: 'link_type',
+            label: 'Type',
+            defaultVisible: true,
+            defaultWidth: 90,
+            sortable: true,
+            render: (value) => {
+                if (!value) return '-'
+                return (
+                    <Badge variant={value === 'dofollow' ? 'default' : 'secondary'} className="text-xs">
+                        {value}
+                    </Badge>
+                )
+            }
+        },
+        {
+            key: 'source_url',
+            label: 'Live Link',
+            defaultVisible: true,
+            defaultWidth: 180,
+            sortable: false,
+            render: (value) => {
+                if (!value) return <span className="text-muted-foreground">-</span>
+                try {
+                    const url = new URL(value)
+                    return (
+                        <a
+                            href={value}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline flex items-center gap-1 text-xs"
+                            title={value}
+                        >
+                            {url.hostname.replace('www.', '')}
+                            <ExternalLink className="h-3 w-3" />
+                        </a>
+                    )
+                } catch {
+                    return value
+                }
+            }
+        },
+        {
+            key: 'published_date',
+            label: 'Published',
+            defaultVisible: false,
+            defaultWidth: 100,
+            sortable: true,
+            render: (value) => formatDate(value)
+        },
+        {
+            key: 'notes',
+            label: 'Notes',
+            defaultVisible: false,
+            defaultWidth: 150,
+            sortable: false,
+            render: (value) => value ? (
+                <span className="text-xs truncate max-w-[150px] block" title={value}>
+                    {value}
+                </span>
+            ) : '-'
+        }
+    ]
+
+    // Row actions for DataTable
+    const rowActions = (row: LinkPlanEntry) => (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                    <MoreHorizontal className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleEdit(row)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                    className="text-red-600"
+                    onClick={() => deleteMutation.mutate(row.id)}
+                >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    )
+
+    // Filter toolbar for DataTable
+    const filterToolbar = (
+        <div className="flex gap-3 flex-wrap items-end">
+            <div className="w-[180px]">
+                <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                    <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select account..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {accounts?.map(a => (
+                            <SelectItem key={a.id} value={a.id}>{a.account_name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="w-[130px]">
+                <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                    <SelectTrigger className="h-9">
+                        <SelectValue placeholder="All quarters" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="__all__">All quarters</SelectItem>
+                        {QUARTERS.map(q => (
+                            <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="w-[90px]">
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger className="h-9">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {yearOptions.map(y => (
+                            <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="w-[120px]">
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="h-9">
+                        <SelectValue placeholder="All statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="__all__">All statuses</SelectItem>
+                        {STATUS_OPTIONS.map(s => (
+                            <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9">
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                </Button>
+            )}
+        </div>
+    )
 
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-start justify-between">
+            <div className="flex justify-between items-start">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Link Plan</h1>
-                    <p className="text-muted-foreground">
-                        Plan and track link building campaigns by quarter
-                    </p>
+                    <h1 className="text-2xl font-bold">Link Plan</h1>
+                    <p className="text-muted-foreground">Plan and track link building campaigns by quarter</p>
                 </div>
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
-                        <Button disabled={!selectedAccount}>
+                        <Button>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Link
                         </Button>
@@ -349,46 +614,75 @@ export default function LinkPlan() {
                             <div>
                                 <Label>Destination URL</Label>
                                 <Input
+                                    placeholder="https://example.com/page"
                                     value={formData.destination_url}
                                     onChange={e => setFormData(f => ({ ...f, destination_url: e.target.value }))}
-                                    placeholder="https://example.com/page"
                                 />
                             </div>
                             <div>
                                 <Label>Anchor Text</Label>
                                 <Input
+                                    placeholder="Target keyword or phrase"
                                     value={formData.anchor_text}
                                     onChange={e => setFormData(f => ({ ...f, anchor_text: e.target.value }))}
-                                    placeholder="Target keyword or phrase"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label>Publisher</Label>
                                     <Input
+                                        placeholder="publisher.com"
                                         value={formData.publisher}
                                         onChange={e => setFormData(f => ({ ...f, publisher: e.target.value }))}
-                                        placeholder="publisher.com"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <Label>DA</Label>
+                                        <Input
+                                            type="number"
+                                            placeholder="0-100"
+                                            value={formData.publisher_da}
+                                            onChange={e => setFormData(f => ({ ...f, publisher_da: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label>PA</Label>
+                                        <Input
+                                            type="number"
+                                            placeholder="0-100"
+                                            value={formData.page_authority}
+                                            onChange={e => setFormData(f => ({ ...f, page_authority: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>Live Link URL</Label>
+                                    <Input
+                                        placeholder="https://publisher.com/article"
+                                        value={formData.source_url}
+                                        onChange={e => setFormData(f => ({ ...f, source_url: e.target.value }))}
                                     />
                                 </div>
                                 <div>
-                                    <Label>Publisher DA</Label>
-                                    <Input
-                                        type="number"
-                                        value={formData.publisher_da}
-                                        onChange={e => setFormData(f => ({ ...f, publisher_da: e.target.value }))}
-                                        placeholder="0-100"
-                                        min={0}
-                                        max={100}
-                                    />
+                                    <Label>Link Type</Label>
+                                    <Select value={formData.link_type} onValueChange={v => setFormData(f => ({ ...f, link_type: v }))}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="dofollow">Dofollow</SelectItem>
+                                            <SelectItem value="nofollow">Nofollow</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
                             <div>
                                 <Label>Notes</Label>
                                 <Textarea
+                                    placeholder="Additional notes..."
                                     value={formData.notes}
                                     onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
-                                    rows={2}
                                 />
                             </div>
                             <div className="flex justify-end gap-2">
@@ -405,54 +699,6 @@ export default function LinkPlan() {
                 </Dialog>
             </div>
 
-            {/* Filters */}
-            <Card>
-                <CardContent className="pt-6">
-                    <div className="flex gap-4 flex-wrap">
-                        <div className="w-[200px]">
-                            <Label className="text-xs text-muted-foreground">Account</Label>
-                            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select account..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {accounts?.map(a => (
-                                        <SelectItem key={a.id} value={a.id}>{a.account_name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="w-[150px]">
-                            <Label className="text-xs text-muted-foreground">Quarter</Label>
-                            <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="All quarters" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__all__">All quarters</SelectItem>
-                                    {QUARTERS.map(q => (
-                                        <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="w-[100px]">
-                            <Label className="text-xs text-muted-foreground">Year</Label>
-                            <Select value={selectedYear} onValueChange={setSelectedYear}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {yearOptions.map(y => (
-                                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
             {/* Data Table */}
             <Card>
                 <CardHeader>
@@ -468,117 +714,18 @@ export default function LinkPlan() {
                             <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
                             <p>Select an account to view link plans</p>
                         </div>
-                    ) : isLoading ? (
-                        <div className="flex justify-center py-12">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : !linkPlans?.length ? (
-                        <div className="text-center py-12 text-muted-foreground">
-                            <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No link plans yet. Click "Add Link" to get started.</p>
-                        </div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="w-[120px]">Month</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Publisher</TableHead>
-                                    <TableHead className="w-[50px]">DA</TableHead>
-                                    <TableHead className="w-[50px]">PA</TableHead>
-                                    <TableHead>Destination URL</TableHead>
-                                    <TableHead>Anchor</TableHead>
-                                    <TableHead className="w-[80px]">Type</TableHead>
-                                    <TableHead className="w-[50px]"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {linkPlans.map(entry => (
-                                    <TableRow key={entry.id}>
-                                        <TableCell className="font-medium">
-                                            {formatMonth(entry.target_month)}
-                                        </TableCell>
-                                        <TableCell>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Badge
-                                                        className={`cursor-pointer ${getStatusStyle(entry.status)}`}
-                                                    >
-                                                        {entry.status}
-                                                    </Badge>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent>
-                                                    {STATUS_OPTIONS.map(s => (
-                                                        <DropdownMenuItem
-                                                            key={s.value}
-                                                            onClick={() => quickStatusMutation.mutate({ id: entry.id, status: s.value })}
-                                                        >
-                                                            <Badge className={`mr-2 ${s.color}`}>{s.label}</Badge>
-                                                        </DropdownMenuItem>
-                                                    ))}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
-                                        <TableCell>
-                                            {entry.publisher || <span className="text-muted-foreground">TBD</span>}
-                                        </TableCell>
-                                        <TableCell>
-                                            {entry.publisher_da || '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            {entry.page_authority || '-'}
-                                        </TableCell>
-                                        <TableCell className="max-w-[200px] truncate">
-                                            {entry.destination_url ? (
-                                                <a
-                                                    href={entry.destination_url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 hover:underline flex items-center gap-1"
-                                                >
-                                                    {new URL(entry.destination_url).pathname}
-                                                    <ExternalLink className="h-3 w-3" />
-                                                </a>
-                                            ) : (
-                                                <span className="text-muted-foreground">-</span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="max-w-[150px] truncate">
-                                            {entry.anchor_text || '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            {entry.link_type ? (
-                                                <Badge variant={entry.link_type === 'dofollow' ? 'default' : 'secondary'} className="text-xs">
-                                                    {entry.link_type}
-                                                </Badge>
-                                            ) : '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="sm">
-                                                        <MoreHorizontal className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => handleEdit(entry)}>
-                                                        <Pencil className="h-4 w-4 mr-2" />
-                                                        Edit
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        className="text-red-600"
-                                                        onClick={() => deleteMutation.mutate(entry.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4 mr-2" />
-                                                        Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                        <DataTable
+                            data={linkPlans || []}
+                            columns={columns}
+                            loading={isLoading}
+                            storageKey="pulse_link_plan"
+                            emptyMessage="No link plans yet. Click 'Add Link' to get started."
+                            rowActions={rowActions}
+                            toolbar={filterToolbar}
+                            onRefresh={() => refetch()}
+                            defaultSort={{ key: 'target_month', direction: 'desc' }}
+                        />
                     )}
                 </CardContent>
             </Card>
@@ -633,33 +780,49 @@ export default function LinkPlan() {
                                     onChange={e => setFormData(f => ({ ...f, publisher: e.target.value }))}
                                 />
                             </div>
-                            <div>
-                                <Label>Publisher DA</Label>
-                                <Input
-                                    type="number"
-                                    value={formData.publisher_da}
-                                    onChange={e => setFormData(f => ({ ...f, publisher_da: e.target.value }))}
-                                    min={0}
-                                    max={100}
-                                />
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <Label>DA</Label>
+                                    <Input
+                                        type="number"
+                                        value={formData.publisher_da}
+                                        onChange={e => setFormData(f => ({ ...f, publisher_da: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <Label>PA</Label>
+                                    <Input
+                                        type="number"
+                                        value={formData.page_authority}
+                                        onChange={e => setFormData(f => ({ ...f, page_authority: e.target.value }))}
+                                    />
+                                </div>
                             </div>
                         </div>
-                        {formData.status === 'live' && (
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <Label>Live Link</Label>
+                                <Label>Live Link URL</Label>
                                 <Input
-                                    value={formData.live_link}
-                                    onChange={e => setFormData(f => ({ ...f, live_link: e.target.value }))}
-                                    placeholder="https://publisher.com/article"
+                                    value={formData.source_url}
+                                    onChange={e => setFormData(f => ({ ...f, source_url: e.target.value }))}
                                 />
                             </div>
-                        )}
+                            <div>
+                                <Label>Link Type</Label>
+                                <Select value={formData.link_type} onValueChange={v => setFormData(f => ({ ...f, link_type: v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="dofollow">Dofollow</SelectItem>
+                                        <SelectItem value="nofollow">Nofollow</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                         <div>
                             <Label>Notes</Label>
                             <Textarea
                                 value={formData.notes}
                                 onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
-                                rows={2}
                             />
                         </div>
                         <div className="flex justify-end gap-2">
@@ -668,7 +831,7 @@ export default function LinkPlan() {
                             </Button>
                             <Button type="submit" disabled={updateMutation.isPending}>
                                 {updateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                                Save
+                                Save Changes
                             </Button>
                         </div>
                     </form>

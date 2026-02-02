@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import {
     Table,
     TableBody,
@@ -17,7 +17,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Settings2, Download, RefreshCw, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
+import { Settings2, Download, RefreshCw, ChevronLeft, ChevronRight, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 
 // Column definition
 export interface ColumnDef {
@@ -26,7 +26,14 @@ export interface ColumnDef {
     defaultVisible?: boolean
     defaultWidth?: number
     minWidth?: number
+    sortable?: boolean
     render?: (value: any, row: any) => React.ReactNode
+}
+
+// Sort state
+export interface SortState {
+    key: string
+    direction: 'asc' | 'desc'
 }
 
 // DataTable props
@@ -45,6 +52,9 @@ interface DataTableProps {
     rowActions?: (row: any) => React.ReactNode
     onRowClick?: (row: any) => void
     toolbar?: React.ReactNode
+    defaultSort?: SortState
+    onSortChange?: (sort: SortState | null) => void
+    serverSideSort?: boolean
 }
 
 // Helper functions
@@ -105,6 +115,35 @@ function exportToCSV(data: any[], filename: string) {
     URL.revokeObjectURL(url)
 }
 
+// Compare function for sorting
+function compareValues(a: any, b: any, direction: 'asc' | 'desc'): number {
+    // Handle nulls
+    if (a === null || a === undefined) return direction === 'asc' ? 1 : -1
+    if (b === null || b === undefined) return direction === 'asc' ? -1 : 1
+
+    // Handle dates
+    if (typeof a === 'string' && typeof b === 'string') {
+        const dateA = Date.parse(a)
+        const dateB = Date.parse(b)
+        if (!isNaN(dateA) && !isNaN(dateB)) {
+            return direction === 'asc' ? dateA - dateB : dateB - dateA
+        }
+    }
+
+    // Handle numbers
+    if (typeof a === 'number' && typeof b === 'number') {
+        return direction === 'asc' ? a - b : b - a
+    }
+
+    // Handle strings
+    const strA = String(a).toLowerCase()
+    const strB = String(b).toLowerCase()
+    if (direction === 'asc') {
+        return strA.localeCompare(strB)
+    }
+    return strB.localeCompare(strA)
+}
+
 export function DataTable({
     data,
     columns,
@@ -119,8 +158,14 @@ export function DataTable({
     onExport,
     rowActions,
     onRowClick,
-    toolbar
+    toolbar,
+    defaultSort,
+    onSortChange,
+    serverSideSort = false
 }: DataTableProps) {
+    // Sort state
+    const [sort, setSort] = useState<SortState | null>(defaultSort || null)
+
     // Visible columns state
     const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
         new Set(columns.filter(c => c.defaultVisible !== false).map(c => c.key))
@@ -141,6 +186,45 @@ export function DataTable({
     useEffect(() => {
         columnWidthsRef.current = columnWidths
     }, [columnWidths])
+
+    // Handle sort click
+    const handleSort = (colKey: string) => {
+        const column = columns.find(c => c.key === colKey)
+        if (!column?.sortable) return
+
+        let newSort: SortState | null
+        if (sort?.key === colKey) {
+            if (sort.direction === 'asc') {
+                newSort = { key: colKey, direction: 'desc' }
+            } else {
+                newSort = null // Clear sort on third click
+            }
+        } else {
+            newSort = { key: colKey, direction: 'asc' }
+        }
+
+        setSort(newSort)
+        onSortChange?.(newSort)
+    }
+
+    // Sort icon component
+    const SortIcon = ({ colKey }: { colKey: string }) => {
+        const column = columns.find(c => c.key === colKey)
+        if (!column?.sortable) return null
+
+        if (sort?.key !== colKey) {
+            return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />
+        }
+        return sort.direction === 'asc'
+            ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+            : <ArrowDown className="h-3 w-3 ml-1 text-primary" />
+    }
+
+    // Client-side sorted data (if not using server-side sorting)
+    const sortedData = useMemo(() => {
+        if (serverSideSort || !sort) return data
+        return [...data].sort((a, b) => compareValues(a[sort.key], b[sort.key], sort.direction))
+    }, [data, sort, serverSideSort])
 
     // Toggle column visibility
     const toggleColumn = (key: string) => {
@@ -209,7 +293,7 @@ export function DataTable({
             onExport(all)
         } else {
             const filename = `export_${new Date().toISOString().split('T')[0]}.csv`
-            exportToCSV(data, filename)
+            exportToCSV(sortedData, filename)
         }
     }
 
@@ -287,11 +371,17 @@ export function DataTable({
                                     <TableHead
                                         key={col.key}
                                         style={{ width: columnWidths[col.key] || 150, position: 'relative' }}
+                                        className={col.sortable ? 'cursor-pointer select-none hover:bg-muted/50' : ''}
+                                        onClick={() => col.sortable && handleSort(col.key)}
                                     >
-                                        {col.label}
+                                        <div className="flex items-center">
+                                            {col.label}
+                                            <SortIcon colKey={col.key} />
+                                        </div>
                                         <div
                                             className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/50"
                                             onMouseDown={(e) => handleResizeStart(e, col.key)}
+                                            onClick={(e) => e.stopPropagation()}
                                         />
                                     </TableHead>
                                 ))}
@@ -310,14 +400,14 @@ export function DataTable({
                                         {rowActions && <TableCell><Skeleton className="h-5 w-16" /></TableCell>}
                                     </TableRow>
                                 ))
-                            ) : data.length === 0 ? (
+                            ) : sortedData.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={displayColumns.length + (rowActions ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                                         {emptyMessage}
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                data.map((row, idx) => (
+                                sortedData.map((row, idx) => (
                                     <TableRow
                                         key={row.id || idx}
                                         className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : ''}
@@ -374,3 +464,4 @@ export function DataTable({
         </div>
     )
 }
+
