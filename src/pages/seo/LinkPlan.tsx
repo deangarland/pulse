@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
 import { useAccountStore } from '@/lib/account-store'
 import { DataTable, type ColumnDef } from "@/components/DataTable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -56,12 +55,6 @@ interface LinkPlanEntry {
         account_name: string
         website_url: string | null
     }
-}
-
-interface Account {
-    id: string
-    account_name: string
-    website_url: string | null
 }
 
 const STATUS_OPTIONS = [
@@ -124,19 +117,6 @@ export default function LinkPlan() {
         live_link: '',
         source_url: '',
         link_type: 'dofollow'
-    })
-
-    // Fetch accounts
-    const { data: _accounts } = useQuery({
-        queryKey: ['accounts-list'],
-        queryFn: async () => {
-            const { data, error } = await supabase
-                .from('accounts')
-                .select('id, account_name, website_url')
-                .order('account_name')
-            if (error) throw error
-            return data as Account[]
-        }
     })
 
     // Sync with global account selector - null means "All Customers"
