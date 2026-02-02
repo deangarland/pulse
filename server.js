@@ -501,8 +501,9 @@ app.post('/api/admin/users', async (req, res) => {
         }
 
         // Invite user via Supabase Auth (sends invite email)
+        const appUrl = process.env.APP_URL || 'https://pulse.deangarland.com'
         const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
-            redirectTo: `${process.env.VITE_APP_URL || 'http://localhost:4000'}/login`
+            redirectTo: `${appUrl}/login`
         })
 
         if (authError) {
