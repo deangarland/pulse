@@ -61,6 +61,7 @@ const items = [
         title: "Admin",
         icon: Settings,
         items: [
+            { title: "Users", url: "/admin/users" },
             { title: "Prompts", url: "/admin/prompts" },
             { title: "Taxonomy", url: "/admin/taxonomy" },
         ]

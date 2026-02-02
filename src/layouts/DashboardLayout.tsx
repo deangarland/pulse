@@ -3,9 +3,12 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Toaster } from "@/components/ui/sonner"
 import { CustomerSelector } from "@/components/CustomerSelector"
-import { Outlet } from "react-router-dom"
+import { Outlet, useLocation } from "react-router-dom"
 
 export default function DashboardLayout() {
+    const location = useLocation()
+    const isAdminRoute = location.pathname.startsWith('/admin')
+
     return (
         <SidebarProvider>
             <AppSidebar />
@@ -17,7 +20,7 @@ export default function DashboardLayout() {
                             <Separator orientation="vertical" className="mr-2 h-4" />
                             <h1 className="font-semibold text-sm">Platform Overview</h1>
                         </div>
-                        <CustomerSelector />
+                        {!isAdminRoute && <CustomerSelector />}
                     </div>
                 </header>
                 <div className="flex-1 bg-muted/20 overflow-auto">
