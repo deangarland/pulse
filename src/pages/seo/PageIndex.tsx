@@ -117,7 +117,31 @@ export default function PageIndex() {
 
     // Add website modal state
     const [addWebsiteOpen, setAddWebsiteOpen] = useState(false)
-    const [crawlingSiteId, setCrawlingSiteId] = useState<string | null>(null)
+    const [newCrawlSiteId, setNewCrawlSiteId] = useState<string | null>(null)
+
+    // Query for any sites currently in progress (persists across page navigation)
+    const { data: inProgressSites, refetch: refetchInProgress } = useQuery({
+        queryKey: ['in-progress-sites', selectedAccountId],
+        queryFn: async () => {
+            let query = supabase
+                .from('site_index')
+                .select('id, domain, crawl_status')
+                .eq('crawl_status', 'in_progress')
+                .order('updated_at', { ascending: false })
+                .limit(1)
+
+            if (selectedAccountId) {
+                query = query.eq('account_id', selectedAccountId)
+            }
+
+            const { data } = await query
+            return data || []
+        },
+        refetchInterval: 10000 // Check every 10 seconds
+    })
+
+    // Use either newly started crawl or first in-progress site from query
+    const crawlingSiteId = newCrawlSiteId || (inProgressSites?.[0]?.id ?? null)
 
     const handleEditPage = (pageData: any) => {
         setEditingPage(pageData)
@@ -452,8 +476,8 @@ export default function PageIndex() {
         <>
             <Card>
                 <CardHeader className="pb-3">
-                    <div className="flex flex-row items-center justify-between">
-                        <div>
+                    <div className="flex flex-row items-center justify-between gap-4">
+                        <div className="flex-shrink-0">
                             <CardTitle className="flex items-center gap-2 text-lg">
                                 <FileText className="h-5 w-5" />
                                 Page Index
@@ -462,6 +486,20 @@ export default function PageIndex() {
                                 {data?.total.toLocaleString()} pages {hasFilters ? '(filtered)' : 'indexed'}
                             </CardDescription>
                         </div>
+
+                        {/* Inline Crawl Progress */}
+                        {crawlingSiteId && (
+                            <div className="flex-1 max-w-md">
+                                <CrawlProgress
+                                    siteId={crawlingSiteId}
+                                    onComplete={() => {
+                                        refetch()
+                                        refetchInProgress()
+                                        setTimeout(() => setNewCrawlSiteId(null), 5000)
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -505,27 +543,11 @@ export default function PageIndex() {
             {/* Add Website Modal */}
             <AddWebsiteModal
                 open={addWebsiteOpen}
-                onOpenChange={(open) => {
-                    setAddWebsiteOpen(open)
-                    if (!open) setCrawlingSiteId(null)
-                }}
+                onOpenChange={setAddWebsiteOpen}
                 onSuccess={(siteId) => {
-                    setCrawlingSiteId(siteId)
+                    setNewCrawlSiteId(siteId)
                 }}
             />
-
-            {/* Crawl Progress Banner */}
-            {crawlingSiteId && (
-                <div className="fixed bottom-4 right-4 w-96 z-50 shadow-lg rounded-lg border bg-background">
-                    <CrawlProgress
-                        siteId={crawlingSiteId}
-                        onComplete={() => {
-                            refetch()
-                            setTimeout(() => setCrawlingSiteId(null), 5000)
-                        }}
-                    />
-                </div>
-            )}
         </>
     )
 }
