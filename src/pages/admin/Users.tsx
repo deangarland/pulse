@@ -438,45 +438,55 @@ export default function UsersAdmin() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div>
-                                <Label>Account Access</Label>
-                                <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
-                                    <div className="flex items-center space-x-2 pb-2 border-b mb-2">
-                                        <Checkbox
-                                            id="all-accounts"
-                                            checked={allAccounts && createForm.account_ids.length === allAccounts.length}
-                                            onCheckedChange={(checked: boolean) => {
-                                                if (checked && allAccounts) {
-                                                    setCreateForm(f => ({ ...f, account_ids: allAccounts.map(a => a.id) }))
-                                                } else {
-                                                    setCreateForm(f => ({ ...f, account_ids: [] }))
-                                                }
-                                            }}
-                                        />
-                                        <label htmlFor="all-accounts" className="text-sm font-medium cursor-pointer">
-                                            All Accounts ({allAccounts?.length || 0})
-                                        </label>
-                                    </div>
-                                    {allAccounts?.map(account => (
-                                        <div key={account.id} className="flex items-center space-x-2">
+                            {/* Hide account selection for super_admin and admin - they get all accounts */}
+                            {roles?.find(r => r.id === createForm.role_id)?.name === 'super_admin' ||
+                                roles?.find(r => r.id === createForm.role_id)?.name === 'admin' ? (
+                                <div className="p-3 bg-muted rounded-md">
+                                    <p className="text-sm text-muted-foreground">
+                                        <strong>{roles?.find(r => r.id === createForm.role_id)?.name}</strong> users automatically have access to all accounts, including any new accounts added in the future.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div>
+                                    <Label>Account Access</Label>
+                                    <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                                        <div className="flex items-center space-x-2 pb-2 border-b mb-2">
                                             <Checkbox
-                                                id={`account-${account.id}`}
-                                                checked={createForm.account_ids.includes(account.id)}
+                                                id="all-accounts"
+                                                checked={allAccounts && createForm.account_ids.length === allAccounts.length}
                                                 onCheckedChange={(checked: boolean) => {
-                                                    if (checked) {
-                                                        setCreateForm(f => ({ ...f, account_ids: [...f.account_ids, account.id] }))
+                                                    if (checked && allAccounts) {
+                                                        setCreateForm(f => ({ ...f, account_ids: allAccounts.map(a => a.id) }))
                                                     } else {
-                                                        setCreateForm(f => ({ ...f, account_ids: f.account_ids.filter(id => id !== account.id) }))
+                                                        setCreateForm(f => ({ ...f, account_ids: [] }))
                                                     }
                                                 }}
                                             />
-                                            <label htmlFor={`account-${account.id}`} className="text-sm cursor-pointer">
-                                                {account.account_name}
+                                            <label htmlFor="all-accounts" className="text-sm font-medium cursor-pointer">
+                                                All Accounts ({allAccounts?.length || 0})
                                             </label>
                                         </div>
-                                    ))}
+                                        {allAccounts?.map(account => (
+                                            <div key={account.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`account-${account.id}`}
+                                                    checked={createForm.account_ids.includes(account.id)}
+                                                    onCheckedChange={(checked: boolean) => {
+                                                        if (checked) {
+                                                            setCreateForm(f => ({ ...f, account_ids: [...f.account_ids, account.id] }))
+                                                        } else {
+                                                            setCreateForm(f => ({ ...f, account_ids: f.account_ids.filter(id => id !== account.id) }))
+                                                        }
+                                                    }}
+                                                />
+                                                <label htmlFor={`account-${account.id}`} className="text-sm cursor-pointer">
+                                                    {account.account_name}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             <div className="flex justify-end gap-2">
                                 <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                                     Cancel

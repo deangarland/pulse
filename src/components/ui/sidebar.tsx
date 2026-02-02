@@ -220,6 +220,27 @@ const Sidebar = React.forwardRef<
       )
     }
 
+    // Calculate widths based on state
+    const isCollapsed = state === "collapsed"
+    const isIconMode = isCollapsed && collapsible === "icon"
+    const isOffcanvasMode = isCollapsed && collapsible === "offcanvas"
+    const isFloatingOrInset = variant === "floating" || variant === "inset"
+
+    const getGapWidth = () => {
+      if (isOffcanvasMode) return "0px"
+      if (isIconMode) {
+        return isFloatingOrInset ? "calc(var(--sidebar-width-icon) + 1rem)" : "var(--sidebar-width-icon)"
+      }
+      return "var(--sidebar-width)"
+    }
+
+    const getSidebarWidth = () => {
+      if (isIconMode) {
+        return isFloatingOrInset ? "calc(var(--sidebar-width-icon) + 1rem + 2px)" : "var(--sidebar-width-icon)"
+      }
+      return "var(--sidebar-width)"
+    }
+
     return (
       <div
         ref={ref}
@@ -231,35 +252,25 @@ const Sidebar = React.forwardRef<
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div
+          style={{ width: getGapWidth() }}
           className={cn(
             "relative bg-transparent transition-[width] duration-200 ease-linear",
-            "group-data-[side=right]:rotate-180",
-            // Use explicit state check for width
-            state === "collapsed" && collapsible === "offcanvas" && "!w-0",
-            state === "collapsed" && collapsible === "icon" && (variant === "floating" || variant === "inset")
-              ? "!w-[calc(var(--sidebar-width-icon)+1rem)]"
-              : state === "collapsed" && collapsible === "icon"
-                ? "!w-[--sidebar-width-icon]"
-                : "w-[--sidebar-width]"
+            "group-data-[side=right]:rotate-180"
           )}
         />
         <div
+          style={{ width: getSidebarWidth() }}
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh transition-[left,right,width] duration-200 ease-linear md:flex",
             side === "left"
-              ? state === "collapsed" && collapsible === "offcanvas"
+              ? isOffcanvasMode
                 ? "left-[calc(var(--sidebar-width)*-1)]"
                 : "left-0"
-              : state === "collapsed" && collapsible === "offcanvas"
+              : isOffcanvasMode
                 ? "right-[calc(var(--sidebar-width)*-1)]"
                 : "right-0",
-            // Width based on state
-            state === "collapsed" && collapsible === "icon" && (variant === "floating" || variant === "inset")
-              ? "!w-[calc(var(--sidebar-width-icon)+1rem+2px)] p-2"
-              : state === "collapsed" && collapsible === "icon"
-                ? "!w-[--sidebar-width-icon]"
-                : "w-[--sidebar-width]",
-            side === "left" ? "group-data-[side=left]:border-r" : "group-data-[side=right]:border-l",
+            isIconMode && isFloatingOrInset && "p-2",
+            side === "left" ? "border-r" : "border-l",
             className
           )}
           {...props}
