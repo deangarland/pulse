@@ -96,7 +96,6 @@ export default function PageIndex() {
         statusCode: searchParams.get('status') || ''
     })
     const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
-    const [exporting, setExporting] = useState(false)
 
     // Sync URL with filter state
     useEffect(() => {
@@ -211,7 +210,6 @@ export default function PageIndex() {
 
     // Export all or filtered data
     const handleExport = async (exportAll: boolean) => {
-        setExporting(true)
         try {
             let siteIds: string[] | null = null
             if (selectedAccountId) {
@@ -248,8 +246,6 @@ export default function PageIndex() {
             exportToCSV(exportData || [], filename)
         } catch (e) {
             console.error('Export failed:', e)
-        } finally {
-            setExporting(false)
         }
     }
 
