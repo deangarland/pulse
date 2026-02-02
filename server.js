@@ -132,11 +132,21 @@ app.get('/api/health', (req, res) => {
 
 app.post('/api/generate-recommendations', async (req, res) => {
     try {
-        const { pageId } = req.body
+        const { pageId, model } = req.body
 
         if (!pageId) {
             return res.status(400).json({ error: 'pageId is required' })
         }
+
+        // Supported OpenAI models (will expand for Gemini/Claude later)
+        const SUPPORTED_MODELS = [
+            'o3-mini', 'o1', 'o1-mini',
+            'gpt-4.5-preview',
+            'gpt-4o', 'gpt-4o-mini',
+            'gpt-4-turbo', 'gpt-4-turbo-preview', 'gpt-4',
+            'gpt-3.5-turbo'
+        ]
+        const selectedModel = model && SUPPORTED_MODELS.includes(model) ? model : 'gpt-4o'
 
         // Fetch page data
         const { data: page, error: fetchError } = await supabase
@@ -156,7 +166,7 @@ app.post('/api/generate-recommendations', async (req, res) => {
         const prompt = buildPrompt(page)
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: selectedModel,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }

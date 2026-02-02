@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, Tag, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { ModelSelector } from "@/components/ModelSelector"
 
 interface Page {
     id: string
@@ -191,6 +192,7 @@ export default function MetaSchema() {
     const [selectedSite, setSelectedSite] = useState<string>('')
     const [selectedPage, setSelectedPage] = useState<string>('')
     const [pageTypeFilter, setPageTypeFilter] = useState<string>('')
+    const [selectedModel, setSelectedModel] = useState<string>('gpt-4o')
 
     // Listen for global account changes
     useEffect(() => {
@@ -280,14 +282,35 @@ export default function MetaSchema() {
         enabled: !!selectedPage
     })
 
+    // Fetch default model from prompts table
+    const { data: promptSettings } = useQuery({
+        queryKey: ['prompt-default-model'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('prompts')
+                .select('default_model')
+                .eq('name', 'Meta & Schema Recommendations')
+                .single()
+            if (error) return { default_model: 'gpt-4o' }
+            return data
+        }
+    })
+
+    // Update selected model when prompt settings load
+    useEffect(() => {
+        if (promptSettings?.default_model) {
+            setSelectedModel(promptSettings.default_model)
+        }
+    }, [promptSettings])
+
     // Generate recommendations mutation (calls backend API)
     const generateMutation = useMutation({
-        mutationFn: async (pageId: string) => {
+        mutationFn: async ({ pageId, model }: { pageId: string; model: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${apiUrl}/api/generate-recommendations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId })
+                body: JSON.stringify({ pageId, model })
             })
 
             if (!response.ok) {
@@ -449,8 +472,14 @@ ${schema?.overall_reasoning || 'N/A'}
                             disabled={!selectedSite}
                         />
 
+                        <ModelSelector
+                            value={selectedModel}
+                            onChange={setSelectedModel}
+                            disabled={generateMutation.isPending}
+                        />
+
                         <Button
-                            onClick={() => page && generateMutation.mutate(page.id)}
+                            onClick={() => page && generateMutation.mutate({ pageId: page.id, model: selectedModel })}
                             disabled={!selectedPage || generateMutation.isPending}
                             className="min-w-[120px]"
                         >

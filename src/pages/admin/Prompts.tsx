@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Save, Edit2, X, Loader2, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
+import { ModelSelector } from "@/components/ModelSelector"
 
 interface Prompt {
     id: string
     name: string
     description: string
     system_prompt: string
+    default_model: string
     updated_at: string
 }
 
@@ -34,7 +36,7 @@ export default function Prompts() {
         }
     })
 
-    // Update mutation
+    // Update prompt text mutation
     const updateMutation = useMutation({
         mutationFn: async ({ id, system_prompt }: { id: string, system_prompt: string }) => {
             const { error } = await supabase
@@ -55,6 +57,28 @@ export default function Prompts() {
         },
         onError: (error) => {
             toast.error(`Failed to save: ${error.message}`)
+        }
+    })
+
+    // Update model mutation (separate for quick model changes)
+    const updateModelMutation = useMutation({
+        mutationFn: async ({ id, default_model }: { id: string, default_model: string }) => {
+            const { error } = await supabase
+                .from('prompts')
+                .update({
+                    default_model,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+
+            if (error) throw error
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['prompts'] })
+            toast.success('Default model updated')
+        },
+        onError: (error) => {
+            toast.error(`Failed to update model: ${error.message}`)
         }
     })
 
@@ -89,7 +113,7 @@ export default function Prompts() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">AI Prompts</h1>
                 <p className="text-muted-foreground">
-                    Manage the system prompts sent to OpenAI for content generation
+                    Manage system prompts and default AI models for content generation
                 </p>
             </div>
 
@@ -114,6 +138,14 @@ export default function Prompts() {
                                 <CardDescription className="mt-1">
                                     {prompt.description}
                                 </CardDescription>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">Default Model:</span>
+                                    <ModelSelector
+                                        value={prompt.default_model || 'gpt-4o'}
+                                        onChange={(model) => updateModelMutation.mutate({ id: prompt.id, default_model: model })}
+                                        disabled={updateModelMutation.isPending}
+                                    />
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 {editingId === prompt.id ? (
