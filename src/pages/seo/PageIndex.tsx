@@ -14,9 +14,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft, ChevronRight, RotateCcw, Search, Download, X, Pencil } from "lucide-react"
+import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft, ChevronRight, RotateCcw, Search, Download, X, Pencil, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageEditSheet } from "@/components/PageEditSheet"
+import { AddWebsiteModal } from "@/components/AddWebsiteModal"
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -177,6 +178,9 @@ export default function PageIndex() {
     // Edit sheet state
     const [editingPage, setEditingPage] = useState<any>(null)
     const [editSheetOpen, setEditSheetOpen] = useState(false)
+
+    // Add website modal state
+    const [addWebsiteOpen, setAddWebsiteOpen] = useState(false)
 
     const handleEditPage = (page: any) => {
         setEditingPage(page)
@@ -505,6 +509,14 @@ export default function PageIndex() {
                             >
                                 <RotateCcw className="h-4 w-4" />
                             </Button>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => setAddWebsiteOpen(true)}
+                            >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Website
+                            </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="outline" size="sm">
@@ -729,6 +741,13 @@ export default function PageIndex() {
                 page={editingPage}
                 open={editSheetOpen}
                 onOpenChange={setEditSheetOpen}
+            />
+
+            {/* Add Website Modal */}
+            <AddWebsiteModal
+                open={addWebsiteOpen}
+                onOpenChange={setAddWebsiteOpen}
+                onSuccess={() => refetch()}
             />
         </>
     )

@@ -735,6 +735,166 @@ app.get('/api/admin/accounts', async (req, res) => {
     }
 })
 
+// ============================================================
+// SITE INDEX API (for crawling management)
+// ============================================================
+
+// GET /api/sites - List all crawled sites with account info
+app.get('/api/sites', async (req, res) => {
+    try {
+        const { account_id, status } = req.query
+
+        let query = supabase
+            .from('site_index')
+            .select(`
+                *,
+                accounts(id, account_name)
+            `)
+            .order('created_at', { ascending: false })
+
+        if (account_id) {
+            query = query.eq('account_id', account_id)
+        }
+
+        if (status) {
+            query = query.eq('crawl_status', status)
+        }
+
+        const { data, error } = await query
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('List sites error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/sites - Create a new site for crawling
+app.post('/api/sites', async (req, res) => {
+    try {
+        const { url, account_id } = req.body
+
+        if (!url) {
+            return res.status(400).json({ error: 'URL is required' })
+        }
+
+        // Parse domain from URL
+        let domain
+        try {
+            domain = new URL(url).hostname
+        } catch (e) {
+            return res.status(400).json({ error: 'Invalid URL format' })
+        }
+
+        // Check if site with this domain already exists
+        const { data: existing } = await supabase
+            .from('site_index')
+            .select('id, domain, crawl_status')
+            .eq('domain', domain)
+            .single()
+
+        if (existing) {
+            // Update existing site to re-crawl
+            const { data, error } = await supabase
+                .from('site_index')
+                .update({
+                    url,
+                    account_id: account_id || null,
+                    crawl_status: 'pending',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existing.id)
+                .select(`*, accounts(id, account_name)`)
+                .single()
+
+            if (error) {
+                return res.status(500).json({ error: error.message })
+            }
+
+            return res.json({ ...data, updated: true })
+        }
+
+        // Create new site
+        const { data, error } = await supabase
+            .from('site_index')
+            .insert({
+                url,
+                domain,
+                account_id: account_id || null,
+                crawl_status: 'pending',
+                pages_crawled: 0
+            })
+            .select(`*, accounts(id, account_name)`)
+            .single()
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.status(201).json(data)
+    } catch (error) {
+        console.error('Create site error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// PUT /api/sites/:id - Update site (e.g., link to account, update status)
+app.put('/api/sites/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { account_id, crawl_status } = req.body
+
+        const updates = { updated_at: new Date().toISOString() }
+        if (account_id !== undefined) updates.account_id = account_id || null
+        if (crawl_status) updates.crawl_status = crawl_status
+
+        const { data, error } = await supabase
+            .from('site_index')
+            .update(updates)
+            .eq('id', id)
+            .select(`*, accounts(id, account_name)`)
+            .single()
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('Update site error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// DELETE /api/sites/:id - Delete a site and its pages
+app.delete('/api/sites/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        // Delete related data first (pages, resources, analyses)
+        await supabase.from('page_index').delete().eq('site_id', id)
+        await supabase.from('crawl_resources').delete().eq('site_id', id)
+
+        const { error } = await supabase
+            .from('site_index')
+            .delete()
+            .eq('id', id)
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Delete site error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'dist')))
 

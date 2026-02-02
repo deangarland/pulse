@@ -32,13 +32,24 @@ interface Permission {
     description: string
 }
 
-// Group permissions by section
+// Group permissions by section - granular page-level
 const PERMISSION_SECTIONS: Record<string, string[]> = {
     'Dashboard': ['dashboard.read'],
-    'SEO Engine': ['pages.read', 'pages.write', 'links.read', 'links.write', 'meta.read', 'meta.write'],
-    'Ads Engine': ['ads.read', 'ads.write'],
+    'SEO - Page Index': ['seo.pageindex.read', 'seo.pageindex.write'],
+    'SEO - Meta & Schema': ['seo.metaschema.read', 'seo.metaschema.write'],
+    'SEO - Link Plan': ['seo.linkplan.read', 'seo.linkplan.write'],
+    'SEO - Content Hub': ['seo.content.read', 'seo.content.write'],
+    'SEO - Blog Posts': ['seo.blog.read', 'seo.blog.write'],
+    'SEO - GMB Posts': ['seo.gmb.read', 'seo.gmb.write'],
+    'Ads - Meta': ['ads.meta.read', 'ads.meta.write'],
+    'Ads - Google': ['ads.google.read', 'ads.google.write'],
     'Performance': ['performance.read'],
-    'Admin': ['users.read', 'users.write', 'roles.read', 'roles.write', 'prompts.read', 'prompts.write', 'accounts.read', 'accounts.write', 'sites.read', 'sites.write']
+    'Admin - Users': ['users.read', 'users.write'],
+    'Admin - Roles': ['roles.read', 'roles.write'],
+    'Admin - Prompts': ['prompts.read', 'prompts.write'],
+    'Admin - Taxonomy': ['admin.taxonomy.read', 'admin.taxonomy.write'],
+    'Admin - Accounts': ['accounts.read', 'accounts.write'],
+    'Admin - Sites': ['sites.read', 'sites.write']
 }
 
 export default function RolesAdmin() {
