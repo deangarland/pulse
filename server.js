@@ -848,7 +848,7 @@ app.post('/api/sites', async (req, res) => {
                 .update({
                     url,
                     account_id: account_id || null,
-                    crawl_status: 'crawling',
+                    crawl_status: 'in_progress',
                     page_limit,
                     exclude_paths,
                     pages_crawled: 0,
@@ -870,7 +870,7 @@ app.post('/api/sites', async (req, res) => {
                     url,
                     domain,
                     account_id: account_id || null,
-                    crawl_status: 'crawling',
+                    crawl_status: 'in_progress',
                     page_limit,
                     exclude_paths,
                     pages_crawled: 0
