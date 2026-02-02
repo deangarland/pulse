@@ -1,32 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAccountStore } from '@/lib/account-store'
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft, ChevronRight, RotateCcw, Search, Download, X, Pencil, Plus } from "lucide-react"
+import { ExternalLink, FileText, AlertCircle, Search, X, Pencil, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageEditSheet } from "@/components/PageEditSheet"
 import { AddWebsiteModal } from "@/components/AddWebsiteModal"
 import { CrawlProgress } from "@/components/CrawlProgress"
-import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DataTable, type ColumnDef } from "@/components/DataTable"
 import {
     Select,
     SelectContent,
@@ -34,20 +19,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-
-// Storage key for persisting column widths
-const COLUMN_WIDTHS_KEY = 'pulse_page_index_column_widths'
-
-// All available columns from page_index table with default widths
-const ALL_COLUMNS = [
-    { key: 'url', label: 'URL', defaultVisible: true, defaultWidth: 220 },
-    { key: 'title', label: 'Title', defaultVisible: true, defaultWidth: 250 },
-    { key: 'page_type', label: 'Type', defaultVisible: true, defaultWidth: 100 },
-    { key: 'status_code', label: 'Status', defaultVisible: true, defaultWidth: 70 },
-    { key: 'path', label: 'Path', defaultVisible: true, defaultWidth: 180 },
-    { key: 'crawled_at', label: 'Crawled', defaultVisible: true, defaultWidth: 100 },
-    { key: 'content_type', label: 'Content Type', defaultVisible: false, defaultWidth: 120 },
-]
 
 // Page types for filter dropdown
 const PAGE_TYPES = [
@@ -76,34 +47,11 @@ function getPageTypeStyle(type: string | null) {
 
 const PAGE_SIZE = 25
 
-// Get default column widths
-function getDefaultColumnWidths(): Record<string, number> {
-    return ALL_COLUMNS.reduce((acc, col) => {
-        acc[col.key] = col.defaultWidth
-        return acc
-    }, {} as Record<string, number>)
-}
-
-// Load column widths from localStorage
-function loadColumnWidths(): Record<string, number> {
-    try {
-        const stored = localStorage.getItem(COLUMN_WIDTHS_KEY)
-        if (stored) {
-            return { ...getDefaultColumnWidths(), ...JSON.parse(stored) }
-        }
-    } catch (e) {
-        console.error('Failed to load column widths:', e)
-    }
-    return getDefaultColumnWidths()
-}
-
-// Save column widths to localStorage
-function saveColumnWidths(widths: Record<string, number>) {
-    try {
-        localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(widths))
-    } catch (e) {
-        console.error('Failed to save column widths:', e)
-    }
+// Filter state type
+interface Filters {
+    search: string
+    pageType: string
+    statusCode: string
 }
 
 // Export data as CSV
@@ -118,7 +66,6 @@ function exportToCSV(data: any[], filename: string) {
                 const val = row[h]
                 if (val === null || val === undefined) return ''
                 const str = String(val)
-                // Escape quotes and wrap in quotes if contains comma or quote
                 if (str.includes(',') || str.includes('"') || str.includes('\n')) {
                     return `"${str.replace(/"/g, '""')}"`
                 }
@@ -132,15 +79,10 @@ function exportToCSV(data: any[], filename: string) {
     const link = document.createElement('a')
     link.href = url
     link.download = filename
+    document.body.appendChild(link)
     link.click()
+    document.body.removeChild(link)
     URL.revokeObjectURL(url)
-}
-
-// Filter state type
-interface Filters {
-    search: string
-    pageType: string
-    statusCode: string
 }
 
 export default function PageIndex() {
@@ -154,17 +96,11 @@ export default function PageIndex() {
         statusCode: searchParams.get('status') || ''
     })
     const [searchInput, setSearchInput] = useState(searchParams.get('q') || '')
-    const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-        new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
-    )
-    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
-    const columnWidthsRef = useRef<Record<string, number>>(columnWidths)
     const [exporting, setExporting] = useState(false)
 
-    // Sync URL with filter state (preserve existing cid from CustomerSelector)
+    // Sync URL with filter state
     useEffect(() => {
         const params = new URLSearchParams(searchParams)
-        // Update filter params
         if (filters.search) params.set('q', filters.search)
         else params.delete('q')
         if (filters.pageType) params.set('type', filters.pageType)
@@ -184,15 +120,10 @@ export default function PageIndex() {
     const [addWebsiteOpen, setAddWebsiteOpen] = useState(false)
     const [crawlingSiteId, setCrawlingSiteId] = useState<string | null>(null)
 
-    const handleEditPage = (page: any) => {
-        setEditingPage(page)
+    const handleEditPage = (pageData: any) => {
+        setEditingPage(pageData)
         setEditSheetOpen(true)
     }
-
-    // Keep ref in sync with state for access in event handlers
-    useEffect(() => {
-        columnWidthsRef.current = columnWidths
-    }, [columnWidths])
 
     // Handle search on Enter or button click
     const handleSearch = () => {
@@ -211,16 +142,9 @@ export default function PageIndex() {
         setPage(0)
     }, [filters.pageType, filters.statusCode])
 
-    // Resize state
-    const [resizing, setResizing] = useState<{ key: string; startX: number; startWidth: number } | null>(null)
-    const tableRef = useRef<HTMLTableElement>(null)
-
     // Build Supabase query with filters
     const buildQuery = (baseQuery: any) => {
         let query = baseQuery
-
-        // TODO: Filter by account when page_index has account relationship
-        // Currently page_index doesn't have account_id column
 
         if (filters.search) {
             query = query.or(`url.ilike.%${filters.search}%,title.ilike.%${filters.search}%`)
@@ -235,7 +159,7 @@ export default function PageIndex() {
         return query
     }
 
-    // Get selected account UUID from store (not from URL which has hs_account_id)
+    // Get selected account UUID from store
     const { selectedAccountId } = useAccountStore()
 
     const { data, isLoading, error, refetch } = useQuery({
@@ -253,7 +177,6 @@ export default function PageIndex() {
                     .eq('account_id', selectedAccountId)
                 siteIds = sites?.map(s => s.id) || []
 
-                // If no sites for this account, return empty
                 if (siteIds.length === 0) {
                     return { pages: [], total: 0 }
                 }
@@ -286,13 +209,10 @@ export default function PageIndex() {
         }
     })
 
-    const totalPages = Math.ceil((data?.total || 0) / PAGE_SIZE)
-
     // Export all or filtered data
     const handleExport = async (exportAll: boolean) => {
         setExporting(true)
         try {
-            // Get site IDs for selected account
             let siteIds: string[] | null = null
             if (selectedAccountId) {
                 const { data: sites } = await supabase
@@ -306,7 +226,6 @@ export default function PageIndex() {
                 .from('page_index')
                 .select('*')
 
-            // Apply account filter
             if (siteIds && siteIds.length > 0) {
                 query = query.in('site_id', siteIds)
             }
@@ -317,7 +236,7 @@ export default function PageIndex() {
 
             const { data: exportData, error } = await query
                 .order('crawled_at', { ascending: false })
-                .limit(10000) // Limit to 10k rows
+                .limit(10000)
 
             if (error) throw error
 
@@ -342,79 +261,15 @@ export default function PageIndex() {
 
     const hasFilters = filters.search || filters.pageType || filters.statusCode
 
-    // Handle mouse move during resize
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!resizing) return
-
-        const diff = e.clientX - resizing.startX
-        const newWidth = Math.max(50, resizing.startWidth + diff) // Minimum 50px
-
-        setColumnWidths(prev => ({
-            ...prev,
-            [resizing.key]: newWidth
-        }))
-    }, [resizing])
-
-    // Handle mouse up to end resize
-    const handleMouseUp = useCallback(() => {
-        if (resizing) {
-            // Save current columnWidths to localStorage using ref
-            saveColumnWidths(columnWidthsRef.current)
-        }
-        setResizing(null)
-    }, [resizing])
-
-    // Add/remove global mouse listeners for resize
-    useEffect(() => {
-        if (resizing) {
-            document.addEventListener('mousemove', handleMouseMove)
-            document.addEventListener('mouseup', handleMouseUp)
-            document.body.style.cursor = 'col-resize'
-            document.body.style.userSelect = 'none'
-        }
-
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove)
-            document.removeEventListener('mouseup', handleMouseUp)
-            document.body.style.cursor = ''
-            document.body.style.userSelect = ''
-        }
-    }, [resizing, handleMouseMove, handleMouseUp])
-
-    // Start resize
-    const startResize = (key: string, e: React.MouseEvent) => {
-        e.preventDefault()
-        setResizing({
-            key,
-            startX: e.clientX,
-            startWidth: columnWidths[key] || 100
-        })
-    }
-
-    // Reset column widths
-    const resetColumnWidths = () => {
-        const defaults = getDefaultColumnWidths()
-        setColumnWidths(defaults)
-        saveColumnWidths(defaults)
-    }
-
-    const toggleColumn = (key: string) => {
-        setVisibleColumns(prev => {
-            const next = new Set(prev)
-            if (next.has(key)) {
-                next.delete(key)
-            } else {
-                next.add(key)
-            }
-            return next
-        })
-    }
-
-    const renderCellValue = (page: any, columnKey: string) => {
-        const value = page[columnKey]
-
-        switch (columnKey) {
-            case 'url':
+    // Column definitions with render functions
+    const columns: ColumnDef[] = useMemo(() => [
+        {
+            key: 'url',
+            label: 'URL',
+            defaultVisible: true,
+            defaultWidth: 220,
+            sortable: true,
+            render: (value: string) => {
                 try {
                     const pathname = new URL(value).pathname
                     return (
@@ -432,31 +287,140 @@ export default function PageIndex() {
                 } catch {
                     return <span className="text-xs truncate">{value}</span>
                 }
-
-            case 'page_type':
-                return (
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getPageTypeStyle(value)}`}>
-                        {value || 'Unknown'}
-                    </span>
-                )
-
-            case 'status_code':
+            }
+        },
+        {
+            key: 'title',
+            label: 'Title',
+            defaultVisible: true,
+            defaultWidth: 250,
+            sortable: true,
+            render: (value: string) => value
+                ? <span className="text-xs truncate block">{value}</span>
+                : <span className="text-xs text-muted-foreground">—</span>
+        },
+        {
+            key: 'page_type',
+            label: 'Type',
+            defaultVisible: true,
+            defaultWidth: 100,
+            sortable: true,
+            render: (value: string) => (
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${getPageTypeStyle(value)}`}>
+                    {value || 'Unknown'}
+                </span>
+            )
+        },
+        {
+            key: 'status_code',
+            label: 'Status',
+            defaultVisible: true,
+            defaultWidth: 70,
+            sortable: true,
+            render: (value: number) => {
                 const statusColor = value === 200 ? 'text-green-600' : value >= 400 ? 'text-red-600' : 'text-yellow-600'
                 return <span className={`font-mono text-xs ${statusColor}`}>{value}</span>
+            }
+        },
+        {
+            key: 'path',
+            label: 'Path',
+            defaultVisible: true,
+            defaultWidth: 180,
+            sortable: true,
+            render: (value: string) => value
+                ? <span className="text-xs truncate block font-mono">{value}</span>
+                : <span className="text-xs text-muted-foreground">—</span>
+        },
+        {
+            key: 'crawled_at',
+            label: 'Crawled',
+            defaultVisible: true,
+            defaultWidth: 100,
+            sortable: true,
+            render: (value: string) => value ? (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                    {new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                </span>
+            ) : <span className="text-xs text-muted-foreground">—</span>
+        },
+        {
+            key: 'content_type',
+            label: 'Content Type',
+            defaultVisible: false,
+            defaultWidth: 120,
+            sortable: true,
+            render: (value: string) => value
+                ? <span className="text-xs truncate block">{value}</span>
+                : <span className="text-xs text-muted-foreground">—</span>
+        },
+    ], [])
 
-            case 'crawled_at':
-                return value ? (
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                        {new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                    </span>
-                ) : <span className="text-xs text-muted-foreground">—</span>
+    // Toolbar content for filters
+    const toolbar = (
+        <div className="flex items-center gap-2 flex-wrap">
+            {/* Search */}
+            <div className="flex items-center gap-1">
+                <Input
+                    placeholder="Search URL or title..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    className="h-8 w-[200px]"
+                />
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSearch}>
+                    <Search className="h-4 w-4" />
+                </Button>
+            </div>
 
-            default:
-                return value ? (
-                    <span className="text-xs truncate block">{String(value)}</span>
-                ) : <span className="text-xs text-muted-foreground">—</span>
-        }
-    }
+            {/* Page Type Filter */}
+            <Select value={filters.pageType || 'all'} onValueChange={(val) => setFilters(f => ({ ...f, pageType: val === 'all' ? '' : val }))}>
+                <SelectTrigger className="h-8 w-[140px]">
+                    <SelectValue placeholder="Page Type" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {PAGE_TYPES.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+
+            {/* Status Filter */}
+            <Select value={filters.statusCode || 'all'} onValueChange={(val) => setFilters(f => ({ ...f, statusCode: val === 'all' ? '' : val }))}>
+                <SelectTrigger className="h-8 w-[100px]">
+                    <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                    <SelectItem value="301">301</SelectItem>
+                    <SelectItem value="302">302</SelectItem>
+                    <SelectItem value="404">404</SelectItem>
+                    <SelectItem value="500">500</SelectItem>
+                </SelectContent>
+            </Select>
+
+            {/* Clear Filters */}
+            {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8">
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                </Button>
+            )}
+
+            {/* Add Website Button */}
+            <Button
+                variant="default"
+                size="sm"
+                onClick={() => setAddWebsiteOpen(true)}
+                className="h-8"
+            >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Website
+            </Button>
+        </div>
+    )
 
     if (isLoading && !data) {
         return (
@@ -502,244 +466,41 @@ export default function PageIndex() {
                                 {data?.total.toLocaleString()} pages {hasFilters ? '(filtered)' : 'indexed'}
                             </CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={resetColumnWidths}
-                                title="Reset column widths"
-                            >
-                                <RotateCcw className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => setAddWebsiteOpen(true)}
-                            >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Website
-                            </Button>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm">
-                                        <Settings2 className="h-4 w-4 mr-2" />
-                                        Columns
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
-                                    <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    {ALL_COLUMNS.map((col) => (
-                                        <DropdownMenuCheckboxItem
-                                            key={col.key}
-                                            checked={visibleColumns.has(col.key)}
-                                            onCheckedChange={() => toggleColumn(col.key)}
-                                        >
-                                            {col.label}
-                                        </DropdownMenuCheckboxItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm" disabled={exporting}>
-                                        <Download className="h-4 w-4 mr-2" />
-                                        Export
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Export Options</DropdownMenuLabel>
-                                    <DropdownMenuSeparator />
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="w-full justify-start"
-                                        onClick={() => handleExport(true)}
-                                    >
-                                        Export All Data
-                                    </Button>
-                                    {hasFilters && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="w-full justify-start"
-                                            onClick={() => handleExport(false)}
-                                        >
-                                            Export Filtered Only
-                                        </Button>
-                                    )}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <Button variant="outline" size="sm" onClick={() => refetch()}>
-                                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                                Refresh
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* Filter Bar */}
-                    <div className="flex items-center gap-3 mt-4">
-                        <div className="relative flex-1 max-w-sm flex gap-2">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Search URL or title..."
-                                    value={searchInput}
-                                    onChange={(e) => setSearchInput(e.target.value)}
-                                    onKeyDown={handleSearchKeyDown}
-                                    className="pl-8 h-9"
-                                />
-                            </div>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                className="h-9"
-                                onClick={handleSearch}
-                            >
-                                Search
-                            </Button>
-                        </div>
-                        <Select
-                            value={filters.pageType}
-                            onValueChange={(v) => setFilters(f => ({ ...f, pageType: v === 'all' ? '' : v }))}
-                        >
-                            <SelectTrigger className="w-[150px] h-9">
-                                <SelectValue placeholder="Page Type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Types</SelectItem>
-                                {PAGE_TYPES.map((type) => (
-                                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={filters.statusCode}
-                            onValueChange={(v) => setFilters(f => ({ ...f, statusCode: v === 'all' ? '' : v }))}
-                        >
-                            <SelectTrigger className="w-[120px] h-9">
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Status</SelectItem>
-                                <SelectItem value="200">200 OK</SelectItem>
-                                <SelectItem value="301">301 Redirect</SelectItem>
-                                <SelectItem value="302">302 Redirect</SelectItem>
-                                <SelectItem value="404">404 Not Found</SelectItem>
-                                <SelectItem value="500">500 Error</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {hasFilters && (
-                            <Button variant="ghost" size="sm" onClick={clearFilters}>
-                                <X className="h-4 w-4 mr-1" />
-                                Clear
-                            </Button>
-                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                        <Table ref={tableRef} style={{ tableLayout: 'fixed' }}>
-                            <TableHeader>
-                                <TableRow className="bg-muted/50">
-                                    {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
-                                        <TableHead
-                                            key={col.key}
-                                            className="font-semibold text-xs whitespace-nowrap relative group"
-                                            style={{ width: columnWidths[col.key] || col.defaultWidth }}
-                                        >
-                                            <div className="pr-2">{col.label}</div>
-                                            {/* Resize handle */}
-                                            <div
-                                                className="absolute top-0 right-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500 active:bg-blue-600 transition-colors"
-                                                onMouseDown={(e) => startResize(col.key, e)}
-                                                style={{
-                                                    opacity: resizing?.key === col.key ? 1 : 0,
-                                                }}
-                                            />
-                                            {/* Visible resize indicator on hover */}
-                                            <div
-                                                className="absolute top-0 right-0 w-[3px] h-full cursor-col-resize opacity-0 group-hover:opacity-100 bg-border hover:bg-blue-500 transition-all"
-                                                onMouseDown={(e) => startResize(col.key, e)}
-                                            />
-                                        </TableHead>
-                                    ))}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {data?.pages?.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell
-                                            colSpan={visibleColumns.size}
-                                            className="text-center py-8 text-muted-foreground"
-                                        >
-                                            No pages match your filters
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    data?.pages?.map((page) => (
-                                        <TableRow key={page.id} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => handleEditPage(page)}>
-                                            {ALL_COLUMNS.filter(c => visibleColumns.has(c.key)).map((col) => (
-                                                <TableCell
-                                                    key={col.key}
-                                                    className="py-2 overflow-hidden"
-                                                    style={{ width: columnWidths[col.key] || col.defaultWidth }}
-                                                >
-                                                    {renderCellValue(page, col.key)}
-                                                </TableCell>
-                                            ))}
-                                            <TableCell className="py-2 w-[40px]">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        handleEditPage(page)
-                                                    }}
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-
-                    {/* Pagination */}
-                    <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/30">
-                        <div className="text-xs text-muted-foreground">
-                            Showing {data?.pages?.length ? page * PAGE_SIZE + 1 : 0}–{Math.min((page + 1) * PAGE_SIZE, data?.total || 0)} of {data?.total.toLocaleString()}
-                        </div>
-                        <div className="flex items-center gap-1">
+                    <DataTable
+                        data={data?.pages || []}
+                        columns={columns}
+                        loading={isLoading}
+                        storageKey="pulse_page_index"
+                        emptyMessage="No pages match your filters"
+                        pageSize={PAGE_SIZE}
+                        totalCount={data?.total}
+                        page={page}
+                        onPageChange={setPage}
+                        onRefresh={refetch}
+                        onExport={handleExport}
+                        toolbar={toolbar}
+                        rowActions={(row) => (
                             <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setPage(p => Math.max(0, p - 1))}
-                                disabled={page === 0}
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleEditPage(row)
+                                }}
                             >
-                                <ChevronLeft className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
                             </Button>
-                            <div className="px-3 py-1 text-xs font-medium">
-                                Page {page + 1} of {totalPages || 1}
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                                disabled={page >= totalPages - 1}
-                            >
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
+                        )}
+                    />
                 </CardContent>
-            </Card >
+            </Card>
 
             {/* Edit Sheet */}
-            < PageEditSheet
+            <PageEditSheet
                 page={editingPage}
                 open={editSheetOpen}
                 onOpenChange={setEditSheetOpen}
@@ -764,7 +525,6 @@ export default function PageIndex() {
                         siteId={crawlingSiteId}
                         onComplete={() => {
                             refetch()
-                            // Auto-hide after 5 seconds
                             setTimeout(() => setCrawlingSiteId(null), 5000)
                         }}
                     />
