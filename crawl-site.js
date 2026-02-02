@@ -23,16 +23,6 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
 )
 
-// Parse CLI arguments
-const args = process.argv.slice(2)
-const siteIdArg = args.find(a => a.startsWith('--site-id='))
-const limitArg = args.find(a => a.startsWith('--limit='))
-const excludeArg = args.find(a => a.startsWith('--exclude='))
-
-const SITE_ID = siteIdArg ? siteIdArg.split('=')[1] : null
-const PAGE_LIMIT = limitArg ? parseInt(limitArg.split('=')[1], 10) : 200
-const EXCLUDE_PATTERNS = excludeArg ? excludeArg.split('=')[1].split(',') : []
-
 const DELAY_MS = 500  // Polite delay between requests
 const TIMEOUT_MS = 30000
 const MAX_CLEANED_HTML_LENGTH = 15000
@@ -339,41 +329,39 @@ function runClassifier(siteId) {
 }
 
 // ============================================================
-// Main Crawler
+// Main Crawler - Exported for in-process use
 // ============================================================
 
-async function crawlSite() {
-    if (!SITE_ID) {
-        console.error('Usage: node crawl-site.js --site-id=123 --limit=200')
-        process.exit(1)
+export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
+    if (!siteId) {
+        throw new Error('siteId is required')
     }
 
-    console.log(`\n🕷️ Starting crawl for site ${SITE_ID}`)
-    console.log(`   Page limit: ${PAGE_LIMIT}`)
-    console.log(`   Exclude patterns: ${EXCLUDE_PATTERNS.length > 0 ? EXCLUDE_PATTERNS.join(', ') : 'none'}`)
+    console.log(`\n🕷️ Starting crawl for site ${siteId}`)
+    console.log(`   Page limit: ${pageLimit}`)
+    console.log(`   Exclude patterns: ${excludePatterns.length > 0 ? excludePatterns.join(', ') : 'none'}`)
 
     // Get site info
     const { data: site, error: siteError } = await supabase
         .from('site_index')
         .select('*')
-        .eq('id', SITE_ID)
+        .eq('id', siteId)
         .single()
 
     if (siteError || !site) {
-        console.error('Site not found:', siteError?.message)
-        process.exit(1)
+        throw new Error(`Site not found: ${siteError?.message}`)
     }
 
     console.log(`   URL: ${site.url}`)
 
     // Initialize queue with starting URL
-    const queue = new UrlQueue(site.url, PAGE_LIMIT, EXCLUDE_PATTERNS)
+    const queue = new UrlQueue(site.url, pageLimit, excludePatterns)
     queue.add(site.url)
 
     let pagesProcessed = 0
 
     try {
-        await updateSiteStatus(SITE_ID, 'in_progress')
+        await updateSiteStatus(siteId, 'in_progress')
 
         while (queue.canContinue()) {
             const item = queue.next()
@@ -381,8 +369,8 @@ async function crawlSite() {
 
             const { url } = item
 
-            console.log(`\n📄 [${pagesProcessed + 1}/${PAGE_LIMIT}] ${url}`)
-            await updateSiteStatus(SITE_ID, 'in_progress', url)
+            console.log(`\n📄 [${pagesProcessed + 1}/${pageLimit}] ${url}`)
+            await updateSiteStatus(siteId, 'in_progress', url)
 
             // Fetch page
             const result = await fetchPage(url)
@@ -403,7 +391,7 @@ async function crawlSite() {
             console.log(`   ✓ Cleaned: ${(result.html.length / 1024).toFixed(0)}KB → ${(cleanedHtml.length / 1024).toFixed(0)}KB`)
 
             // Save to database
-            await savePage(SITE_ID, result.finalUrl, {
+            await savePage(siteId, result.finalUrl, {
                 ...parsed,
                 statusCode: result.statusCode,
                 html: result.html,
@@ -421,25 +409,44 @@ async function crawlSite() {
 
             pagesProcessed++
             queue.markProcessed()
-            await updatePagesCount(SITE_ID, pagesProcessed)
+            await updatePagesCount(siteId, pagesProcessed)
         }
 
         console.log(`\n✅ Crawl complete! Processed ${pagesProcessed} pages.`)
 
         // Run classifier
-        await updateSiteStatus(SITE_ID, 'classifying')
-        await runClassifier(SITE_ID)
+        await updateSiteStatus(siteId, 'classifying')
+        await runClassifier(siteId)
 
         // Mark complete
-        await updateSiteStatus(SITE_ID, 'complete')
-        console.log(`\n🎉 Site ${SITE_ID} fully processed!`)
+        await updateSiteStatus(siteId, 'complete')
+        console.log(`\n🎉 Site ${siteId} fully processed!`)
 
     } catch (error) {
         console.error('\n❌ Crawl failed:', error.message)
-        await updateSiteStatus(SITE_ID, 'error')
-        process.exit(1)
+        await updateSiteStatus(siteId, 'error')
+        throw error
     }
 }
 
-// Run
-crawlSite().catch(console.error)
+// CLI entry point - only runs when executed directly
+const isMainModule = process.argv[1]?.endsWith('crawl-site.js')
+if (isMainModule) {
+    const args = process.argv.slice(2)
+    const siteIdArg = args.find(a => a.startsWith('--site-id='))
+    const limitArg = args.find(a => a.startsWith('--limit='))
+    const excludeArg = args.find(a => a.startsWith('--exclude='))
+
+    const siteId = siteIdArg ? siteIdArg.split('=')[1] : null
+    const pageLimit = limitArg ? parseInt(limitArg.split('=')[1], 10) : 200
+    const excludePatterns = excludeArg ? excludeArg.split('=')[1].split(',') : []
+
+    if (!siteId) {
+        console.error('Usage: node crawl-site.js --site-id=123 --limit=200')
+        process.exit(1)
+    }
+
+    runCrawl(siteId, pageLimit, excludePatterns)
+        .then(() => process.exit(0))
+        .catch(() => process.exit(1))
+}

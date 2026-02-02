@@ -884,28 +884,15 @@ app.post('/api/sites', async (req, res) => {
             siteData = data
         }
 
-        // Spawn crawler as background process
-        const { spawn } = await import('child_process')
-        const crawlerArgs = [
-            'crawl-site.js',
-            `--site-id=${siteData.id}`,
-            `--limit=${page_limit}`
-        ]
-        if (exclude_paths.length > 0) {
-            crawlerArgs.push(`--exclude=${exclude_paths.join(',')}`)
-        }
-
-        const crawler = spawn('node', crawlerArgs, {
-            cwd: path.dirname(fileURLToPath(import.meta.url)),
-            detached: true,
-            stdio: ['ignore', 'inherit', 'inherit']  // Log stdout/stderr
+        // Run crawler in-process (fire and forget)
+        // Import dynamically to avoid circular dependencies
+        import('./crawl-site.js').then(({ runCrawl }) => {
+            runCrawl(siteData.id, page_limit, exclude_paths)
+                .then(() => console.log(`✅ Crawl complete for ${domain}`))
+                .catch(err => console.error(`❌ Crawl failed for ${domain}:`, err.message))
+        }).catch(err => {
+            console.error(`❌ Failed to import crawler:`, err)
         })
-
-        crawler.on('error', (err) => {
-            console.error(`❌ Crawler spawn error for ${domain}:`, err)
-        })
-
-        crawler.unref()
 
         console.log(`🕷️ Started crawler for site ${siteData.id} (${domain})`)
 
