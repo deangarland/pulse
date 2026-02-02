@@ -139,11 +139,9 @@ export default function LinkPlan() {
         }
     })
 
-    // Set selected account from global context
+    // Sync with global account selector - null means "All Customers"
     useEffect(() => {
-        if (globalAccountId) {
-            setSelectedAccount(globalAccountId)
-        }
+        setSelectedAccount(globalAccountId || '')
     }, [globalAccountId])
 
     // Fetch link plans
@@ -160,8 +158,8 @@ export default function LinkPlan() {
             const response = await fetch(`${apiUrl}/api/link-plan?${params}`)
             if (!response.ok) throw new Error('Failed to fetch link plans')
             return response.json() as Promise<LinkPlanEntry[]>
-        },
-        enabled: !!selectedAccount
+        }
+        // Always fetch - show all data when All Customers selected
     })
 
     // Create mutation
@@ -328,6 +326,14 @@ export default function LinkPlan() {
 
     // Define columns for DataTable
     const columns: ColumnDef[] = [
+        {
+            key: 'account_name',
+            label: 'Account',
+            defaultVisible: !selectedAccount, // Show by default when viewing All Customers
+            defaultWidth: 140,
+            sortable: true,
+            render: (_value, row) => row.accounts?.account_name || '-'
+        },
         {
             key: 'target_month',
             label: 'Month',
@@ -507,21 +513,9 @@ export default function LinkPlan() {
         </DropdownMenu>
     )
 
-    // Filter toolbar for DataTable
+    // Filter toolbar for DataTable - account is controlled by global CustomerSelector
     const filterToolbar = (
         <div className="flex gap-3 flex-wrap items-end">
-            <div className="w-[180px]">
-                <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                    <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Select account..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {accounts?.map(a => (
-                            <SelectItem key={a.id} value={a.id}>{a.account_name}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
             <div className="w-[130px]">
                 <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
                     <SelectTrigger className="h-9">
@@ -709,24 +703,17 @@ export default function LinkPlan() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {!selectedAccount ? (
-                        <div className="text-center py-12 text-muted-foreground">
-                            <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>Select an account to view link plans</p>
-                        </div>
-                    ) : (
-                        <DataTable
-                            data={linkPlans || []}
-                            columns={columns}
-                            loading={isLoading}
-                            storageKey="pulse_link_plan"
-                            emptyMessage="No link plans yet. Click 'Add Link' to get started."
-                            rowActions={rowActions}
-                            toolbar={filterToolbar}
-                            onRefresh={() => refetch()}
-                            defaultSort={{ key: 'target_month', direction: 'desc' }}
-                        />
-                    )}
+                    <DataTable
+                        data={linkPlans || []}
+                        columns={columns}
+                        loading={isLoading}
+                        storageKey="pulse_link_plan"
+                        emptyMessage="No link plans found."
+                        rowActions={rowActions}
+                        toolbar={filterToolbar}
+                        onRefresh={() => refetch()}
+                        defaultSort={{ key: 'target_month', direction: 'desc' }}
+                    />
                 </CardContent>
             </Card>
 

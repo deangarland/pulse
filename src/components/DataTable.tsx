@@ -17,7 +17,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Settings2, Download, RefreshCw, ChevronLeft, ChevronRight, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Settings2, Download, RefreshCw, ChevronLeft, ChevronRight, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown, GripVertical } from "lucide-react"
 
 // Column definition
 export interface ColumnDef {
@@ -82,6 +82,31 @@ function saveColumnWidths(storageKey: string, widths: Record<string, number>) {
         localStorage.setItem(storageKey, JSON.stringify(widths))
     } catch (e) {
         console.error('Failed to save column widths:', e)
+    }
+}
+
+function loadColumnOrder(storageKey: string, columns: ColumnDef[]): string[] {
+    try {
+        const stored = localStorage.getItem(storageKey)
+        if (stored) {
+            const order = JSON.parse(stored)
+            // Validate stored order contains valid keys and add any missing columns
+            const validKeys = new Set(columns.map(c => c.key))
+            const filtered = order.filter((k: string) => validKeys.has(k))
+            const missing = columns.filter(c => !filtered.includes(c.key)).map(c => c.key)
+            return [...filtered, ...missing]
+        }
+    } catch (e) {
+        console.error('Failed to load column order:', e)
+    }
+    return columns.map(c => c.key)
+}
+
+function saveColumnOrder(storageKey: string, order: string[]) {
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(order))
+    } catch (e) {
+        console.error('Failed to save column order:', e)
     }
 }
 
@@ -176,6 +201,13 @@ export function DataTable({
         () => loadColumnWidths(storageKey + '_widths', columns)
     )
     const columnWidthsRef = useRef<Record<string, number>>(columnWidths)
+
+    // Column order state (for drag reordering)
+    const [columnOrder, setColumnOrder] = useState<string[]>(
+        () => loadColumnOrder(storageKey + '_order', columns)
+    )
+    const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+    const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
 
     // Resize state
     const [resizingColumn, setResizingColumn] = useState<string | null>(null)
@@ -280,8 +312,57 @@ export function DataTable({
         }
     }, [resizingColumn, handleResizeMove, handleResizeEnd])
 
-    // Filter to visible columns
-    const displayColumns = columns.filter(c => visibleColumns.has(c.key))
+    // Drag handlers for column reordering
+    const handleDragStart = (e: React.DragEvent, colKey: string) => {
+        setDraggedColumn(colKey)
+        e.dataTransfer.effectAllowed = 'move'
+        e.dataTransfer.setData('text/plain', colKey)
+    }
+
+    const handleDragOver = (e: React.DragEvent, colKey: string) => {
+        e.preventDefault()
+        if (draggedColumn && draggedColumn !== colKey) {
+            setDragOverColumn(colKey)
+        }
+    }
+
+    const handleDragLeave = () => {
+        setDragOverColumn(null)
+    }
+
+    const handleDrop = (e: React.DragEvent, targetKey: string) => {
+        e.preventDefault()
+        if (!draggedColumn || draggedColumn === targetKey) return
+
+        const newOrder = [...columnOrder]
+        const draggedIdx = newOrder.indexOf(draggedColumn)
+        const targetIdx = newOrder.indexOf(targetKey)
+
+        if (draggedIdx !== -1 && targetIdx !== -1) {
+            newOrder.splice(draggedIdx, 1)
+            newOrder.splice(targetIdx, 0, draggedColumn)
+            setColumnOrder(newOrder)
+            saveColumnOrder(storageKey + '_order', newOrder)
+        }
+
+        setDraggedColumn(null)
+        setDragOverColumn(null)
+    }
+
+    const handleDragEnd = () => {
+        setDraggedColumn(null)
+        setDragOverColumn(null)
+    }
+
+    // Filter to visible columns, sorted by column order
+    const displayColumns = useMemo(() => {
+        const visibleCols = columns.filter(c => visibleColumns.has(c.key))
+        return visibleCols.sort((a, b) => {
+            const aIdx = columnOrder.indexOf(a.key)
+            const bIdx = columnOrder.indexOf(b.key)
+            return aIdx - bIdx
+        })
+    }, [columns, visibleColumns, columnOrder])
 
     // Calculate pagination
     const totalPages = totalCount ? Math.ceil(totalCount / pageSize) : 1
@@ -371,10 +452,17 @@ export function DataTable({
                                     <TableHead
                                         key={col.key}
                                         style={{ width: columnWidths[col.key] || 150, position: 'relative' }}
-                                        className={col.sortable ? 'cursor-pointer select-none hover:bg-muted/50' : ''}
+                                        className={`${col.sortable ? 'cursor-pointer select-none hover:bg-muted/50' : ''} ${dragOverColumn === col.key ? 'bg-primary/10 border-l-2 border-primary' : ''}`}
                                         onClick={() => col.sortable && handleSort(col.key)}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, col.key)}
+                                        onDragOver={(e) => handleDragOver(e, col.key)}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={(e) => handleDrop(e, col.key)}
+                                        onDragEnd={handleDragEnd}
                                     >
                                         <div className="flex items-center">
+                                            <GripVertical className="h-3 w-3 mr-1 opacity-30 cursor-grab" />
                                             {col.label}
                                             <SortIcon colKey={col.key} />
                                         </div>
