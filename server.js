@@ -5,6 +5,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -23,6 +25,14 @@ const supabase = createClient(
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 })
+
+// Anthropic (Claude) client
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY
+}) : null
+
+// Google Gemini client
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert SEO consultant specializing in healthcare and medical aesthetics websites. Your role is to analyze web pages and provide optimized meta tags and schema markup recommendations.
 
@@ -127,7 +137,12 @@ function buildPrompt(page) {
 
 // API Routes
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', openai: !!process.env.OPENAI_API_KEY })
+    res.json({
+        status: 'ok',
+        openai: !!process.env.OPENAI_API_KEY,
+        anthropic: !!process.env.ANTHROPIC_API_KEY,
+        gemini: !!process.env.GEMINI_API_KEY
+    })
 })
 
 app.post('/api/generate-recommendations', async (req, res) => {
@@ -138,15 +153,45 @@ app.post('/api/generate-recommendations', async (req, res) => {
             return res.status(400).json({ error: 'pageId is required' })
         }
 
-        // Supported OpenAI models (will expand for Gemini/Claude later)
-        const SUPPORTED_MODELS = [
+        // Model mappings by provider
+        const OPENAI_MODELS = [
             'o3-mini', 'o1', 'o1-mini',
             'gpt-4.5-preview',
             'gpt-4o', 'gpt-4o-mini',
             'gpt-4-turbo', 'gpt-4-turbo-preview', 'gpt-4',
             'gpt-3.5-turbo'
         ]
-        const selectedModel = model && SUPPORTED_MODELS.includes(model) ? model : 'gpt-4o'
+        const ANTHROPIC_MODELS = [
+            'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
+            'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'
+        ]
+        const GEMINI_MODELS = [
+            'gemini-2.5-pro-preview-05-06', 'gemini-2.5-flash-preview-05-20',
+            'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'
+        ]
+
+        // Determine provider and validate model
+        let provider = 'openai'
+        let selectedModel = 'gpt-4o'
+
+        if (model) {
+            if (OPENAI_MODELS.includes(model)) {
+                provider = 'openai'
+                selectedModel = model
+            } else if (ANTHROPIC_MODELS.includes(model)) {
+                if (!anthropic) {
+                    return res.status(400).json({ error: 'Anthropic API key not configured' })
+                }
+                provider = 'anthropic'
+                selectedModel = model
+            } else if (GEMINI_MODELS.includes(model)) {
+                if (!genAI) {
+                    return res.status(400).json({ error: 'Gemini API key not configured' })
+                }
+                provider = 'gemini'
+                selectedModel = model
+            }
+        }
 
         // Fetch page data
         const { data: page, error: fetchError } = await supabase
@@ -164,24 +209,55 @@ app.post('/api/generate-recommendations', async (req, res) => {
 
         // Generate recommendations
         const prompt = buildPrompt(page)
+        let content
 
-        const response = await openai.chat.completions.create({
-            model: selectedModel,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: prompt }
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.7,
-            max_tokens: 4000
-        })
+        if (provider === 'openai') {
+            const response = await openai.chat.completions.create({
+                model: selectedModel,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: prompt }
+                ],
+                response_format: { type: 'json_object' },
+                temperature: 0.7,
+                max_tokens: 4000
+            })
+            content = response.choices[0]?.message?.content
 
-        const content = response.choices[0]?.message?.content
-        if (!content) {
-            return res.status(500).json({ error: 'No response from OpenAI' })
+        } else if (provider === 'anthropic') {
+            const response = await anthropic.messages.create({
+                model: selectedModel,
+                max_tokens: 4000,
+                system: systemPrompt,
+                messages: [
+                    { role: 'user', content: prompt + '\n\nRespond with valid JSON only.' }
+                ]
+            })
+            content = response.content[0]?.text
+
+        } else if (provider === 'gemini') {
+            const geminiModel = genAI.getGenerativeModel({ model: selectedModel })
+            const result = await geminiModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + prompt + '\n\nRespond with valid JSON only.' }] }],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 4000,
+                    responseMimeType: 'application/json'
+                }
+            })
+            content = result.response.text()
         }
 
-        const recommendations = JSON.parse(content)
+        if (!content) {
+            return res.status(500).json({ error: `No response from ${provider}` })
+        }
+
+        // Parse JSON - handle potential markdown wrapping
+        let jsonContent = content.trim()
+        if (jsonContent.startsWith('```')) {
+            jsonContent = jsonContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+        }
+        const recommendations = JSON.parse(jsonContent)
 
         // Save to database
         const { error: updateError } = await supabase
@@ -203,11 +279,158 @@ app.post('/api/generate-recommendations', async (req, res) => {
         res.json({
             success: true,
             recommendations,
+            provider,
+            model: selectedModel,
             message: 'Recommendations generated successfully'
         })
 
     } catch (error) {
         console.error('Generate error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ============================================
+// Link Plan API Endpoints
+// ============================================
+
+// GET /api/link-plan - List link plans with optional filters
+app.get('/api/link-plan', async (req, res) => {
+    try {
+        const { account_id, status, quarter, year } = req.query
+
+        let query = supabase
+            .from('link_plan')
+            .select(`
+                *,
+                accounts!inner(id, account_name, website_url)
+            `)
+            .order('target_month', { ascending: true })
+
+        if (account_id) {
+            query = query.eq('account_id', account_id)
+        }
+
+        if (status) {
+            query = query.eq('status', status)
+        }
+
+        // Filter by quarter (e.g., Q1 = months 1-3)
+        if (quarter && year) {
+            const q = parseInt(quarter)
+            const y = parseInt(year)
+            const startMonth = (q - 1) * 3 + 1
+            const endMonth = q * 3
+            const startDate = `${y}-${String(startMonth).padStart(2, '0')}-01`
+            const endDate = `${y}-${String(endMonth).padStart(2, '0')}-01`
+            query = query.gte('target_month', startDate).lte('target_month', endDate)
+        }
+
+        const { data, error } = await query
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('Link plan list error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/link-plan - Create new link plan
+app.post('/api/link-plan', async (req, res) => {
+    try {
+        const {
+            account_id,
+            target_month,
+            type,
+            publisher,
+            publisher_da,
+            destination_url,
+            destination_page_id,
+            anchor_text,
+            status,
+            notes
+        } = req.body
+
+        if (!account_id || !target_month) {
+            return res.status(400).json({ error: 'account_id and target_month are required' })
+        }
+
+        const { data, error } = await supabase
+            .from('link_plan')
+            .insert({
+                account_id,
+                target_month,
+                type: type || 'Content Placement - Standard',
+                publisher,
+                publisher_da,
+                destination_url,
+                destination_page_id,
+                anchor_text,
+                status: status || 'planned',
+                notes
+            })
+            .select()
+            .single()
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('Link plan create error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// PUT /api/link-plan/:id - Update link plan
+app.put('/api/link-plan/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const updates = req.body
+
+        // Add updated_at timestamp
+        updates.updated_at = new Date().toISOString()
+
+        const { data, error } = await supabase
+            .from('link_plan')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single()
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('Link plan update error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// DELETE /api/link-plan/:id - Delete link plan
+app.delete('/api/link-plan/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const { error } = await supabase
+            .from('link_plan')
+            .delete()
+            .eq('id', id)
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json({ success: true })
+    } catch (error) {
+        console.error('Link plan delete error:', error)
         res.status(500).json({ error: error.message })
     }
 })

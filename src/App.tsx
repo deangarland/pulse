@@ -3,6 +3,7 @@ import DashboardLayout from "./layouts/DashboardLayout"
 import Home from "./pages/Home"
 import PageIndex from "./pages/seo/PageIndex"
 import MetaSchema from "./pages/seo/MetaSchema"
+import LinkPlan from "./pages/seo/LinkPlan"
 import PlaceholderView from "./pages/Placeholder"
 import Prompts from "./pages/admin/Prompts"
 import Taxonomy from "./pages/admin/Taxonomy"
@@ -27,6 +28,7 @@ function App() {
           {/* SEO Engine */}
           <Route path="/seo/pages" element={<PageIndex />} />
           <Route path="/seo/meta" element={<MetaSchema />} />
+          <Route path="/seo/links" element={<LinkPlan />} />
           <Route path="/seo/content" element={<PlaceholderView />} />
           <Route path="/seo/blog" element={<PlaceholderView />} />
           <Route path="/seo/gmb" element={<PlaceholderView />} />

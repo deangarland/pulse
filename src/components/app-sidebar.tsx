@@ -36,6 +36,7 @@ const items = [
         items: [
             { title: "Page Index", url: "/seo/pages" },
             { title: "Meta & Schema", url: "/seo/meta" },
+            { title: "Link Plan", url: "/seo/links" },
             { title: "Page Content", url: "/seo/content" },
             { title: "Blog Posts", url: "/seo/blog" },
             { title: "GMB Posts", url: "/seo/gmb" },

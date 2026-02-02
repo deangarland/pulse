@@ -9,31 +9,41 @@ export interface Model {
 }
 
 export const AI_MODELS: Model[] = [
-    // Latest reasoning models
+    // OpenAI - Latest reasoning models
     { value: 'o3-mini', label: 'o3-mini', provider: 'openai', description: 'Latest reasoning, fast' },
     { value: 'o1', label: 'o1', provider: 'openai', description: 'Advanced reasoning' },
     { value: 'o1-mini', label: 'o1-mini', provider: 'openai', description: 'Fast reasoning' },
 
-    // GPT-4.5 Preview
+    // OpenAI - GPT-4.5 Preview
     { value: 'gpt-4.5-preview', label: 'GPT-4.5 Preview', provider: 'openai', description: 'Latest preview' },
 
-    // GPT-4o family
+    // OpenAI - GPT-4o family
     { value: 'gpt-4o', label: 'GPT-4o', provider: 'openai', description: 'Flagship model' },
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'openai', description: 'Fast & affordable' },
 
-    // GPT-4 Turbo
+    // OpenAI - GPT-4 Turbo
     { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', provider: 'openai', description: 'High capability' },
     { value: 'gpt-4-turbo-preview', label: 'GPT-4 Turbo Preview', provider: 'openai', description: 'Latest turbo preview' },
 
-    // GPT-4 base
+    // OpenAI - GPT-4 base
     { value: 'gpt-4', label: 'GPT-4', provider: 'openai', description: 'Original GPT-4' },
 
-    // GPT-3.5
+    // OpenAI - GPT-3.5
     { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', provider: 'openai', description: 'Fast & cheap' },
 
-    // Future: Gemini and Claude models will be added here
-    // { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini', description: 'Google AI' },
-    // { value: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', provider: 'claude', description: 'Anthropic AI' },
+    // Claude (Anthropic)
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', provider: 'claude', description: 'Best balance' },
+    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', provider: 'claude', description: 'Fast & cheap' },
+    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', provider: 'claude', description: 'Most capable' },
+    { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet', provider: 'claude', description: 'Balanced' },
+    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku', provider: 'claude', description: 'Fastest' },
+
+    // Gemini (Google)
+    { value: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', provider: 'gemini', description: 'Best quality' },
+    { value: 'gemini-2.5-flash-preview-05-20', label: 'Gemini 2.5 Flash', provider: 'gemini', description: 'Fast & capable' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini', description: 'Multimodal' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', provider: 'gemini', description: '1M context' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', provider: 'gemini', description: 'Fast' },
 ]
 
 // Provider colors for visual distinction
