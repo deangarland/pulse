@@ -119,6 +119,9 @@ export default function PageIndex() {
     const [addWebsiteOpen, setAddWebsiteOpen] = useState(false)
     const [newCrawlSiteId, setNewCrawlSiteId] = useState<string | null>(null)
 
+    // Get selected account UUID from store
+    const { selectedAccountId } = useAccountStore()
+
     // Query for any sites currently in progress (persists across page navigation)
     const { data: inProgressSites, refetch: refetchInProgress } = useQuery({
         queryKey: ['in-progress-sites', selectedAccountId],
@@ -181,9 +184,6 @@ export default function PageIndex() {
 
         return query
     }
-
-    // Get selected account UUID from store
-    const { selectedAccountId } = useAccountStore()
 
     const { data, isLoading, error, refetch } = useQuery({
         queryKey: ['pages', page, filters.search, filters.pageType, filters.statusCode, selectedAccountId],
