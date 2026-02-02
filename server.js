@@ -898,8 +898,13 @@ app.post('/api/sites', async (req, res) => {
         const crawler = spawn('node', crawlerArgs, {
             cwd: path.dirname(fileURLToPath(import.meta.url)),
             detached: true,
-            stdio: 'ignore'
+            stdio: ['ignore', 'inherit', 'inherit']  // Log stdout/stderr
         })
+
+        crawler.on('error', (err) => {
+            console.error(`❌ Crawler spawn error for ${domain}:`, err)
+        })
+
         crawler.unref()
 
         console.log(`🕷️ Started crawler for site ${siteData.id} (${domain})`)
