@@ -104,9 +104,10 @@ export default function UsersAdmin() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isPermissionsDialogOpen, setIsPermissionsDialogOpen] = useState(false)
 
-    // Create user form state (no password - invite flow)
+    // Create user form state (optional password - invite by default)
     const [createForm, setCreateForm] = useState({
         email: '',
+        password: '',
         role_id: '',
         account_ids: [] as string[]
     })
@@ -216,9 +217,9 @@ export default function UsersAdmin() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-            toast.success('Invite sent! User will receive an email to set their password.')
+            toast.success(createForm.password ? 'User created successfully' : 'Invite sent! User will receive an email to set their password.')
             setIsCreateDialogOpen(false)
-            setCreateForm({ email: '', role_id: '', account_ids: [] })
+            setCreateForm({ email: '', password: '', role_id: '', account_ids: [] })
         },
         onError: (error) => {
             toast.error(`Failed to invite user: ${error.message}`)
@@ -432,7 +433,20 @@ export default function UsersAdmin() {
                                     required
                                 />
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    User will receive an email invite to set their own password.
+                                    Leave password blank to send invite email, or set password directly.
+                                </p>
+                            </div>
+                            <div>
+                                <Label>Password (optional)</Label>
+                                <Input
+                                    type="password"
+                                    value={createForm.password}
+                                    onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
+                                    placeholder="Leave blank to send invite"
+                                    minLength={8}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    If set, user can login immediately with this password.
                                 </p>
                             </div>
                             <div>

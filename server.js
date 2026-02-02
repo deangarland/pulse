@@ -491,20 +491,36 @@ app.get('/api/admin/users', async (req, res) => {
     }
 })
 
-// POST /api/admin/users - Invite a new user (sends email invite)
+// POST /api/admin/users - Create OR invite a new user
+// If password is provided, create user directly. Otherwise, send invite email.
 app.post('/api/admin/users', async (req, res) => {
     try {
-        const { email, role_id, account_ids } = req.body
+        const { email, password, role_id, account_ids } = req.body
 
         if (!email) {
             return res.status(400).json({ error: 'email is required' })
         }
 
-        // Invite user via Supabase Auth (sends invite email)
-        const appUrl = process.env.APP_URL || 'https://pulse.deangarland.com'
-        const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
-            redirectTo: `${appUrl}/login`
-        })
+        let authData, authError
+
+        if (password) {
+            // Create user directly with password (no email sent)
+            const result = await supabase.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true
+            })
+            authData = result.data
+            authError = result.error
+        } else {
+            // Invite user via email
+            const appUrl = process.env.APP_URL || 'https://pulse.deangarland.com'
+            const result = await supabase.auth.admin.inviteUserByEmail(email, {
+                redirectTo: `${appUrl}/login`
+            })
+            authData = result.data
+            authError = result.error
+        }
 
         if (authError) {
             return res.status(500).json({ error: authError.message })

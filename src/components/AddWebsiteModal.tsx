@@ -19,7 +19,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Loader2, Globe, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Loader2, Globe, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AddWebsiteModalProps {
@@ -44,7 +44,6 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
     const [accountId, setAccountId] = useState<string>('')
     const [pageLimit, setPageLimit] = useState(200)
     const [excludePaths, setExcludePaths] = useState('')
-    const [showAdvanced, setShowAdvanced] = useState(false)
     const [error, setError] = useState('')
     const queryClient = useQueryClient()
     const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -97,7 +96,6 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
             setAccountId('')
             setPageLimit(200)
             setExcludePaths('')
-            setShowAdvanced(false)
             setError('')
             onSuccess?.(data.id)
         },
@@ -171,48 +169,34 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
                         </Select>
                     </div>
 
-                    {/* Advanced Options Toggle */}
-                    <button
-                        type="button"
-                        onClick={() => setShowAdvanced(!showAdvanced)}
-                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        Advanced Options
-                    </button>
+                    <div className="space-y-2">
+                        <Label htmlFor="pageLimit">Page Limit</Label>
+                        <Input
+                            id="pageLimit"
+                            type="number"
+                            min={1}
+                            max={1000}
+                            value={pageLimit}
+                            onChange={(e) => setPageLimit(parseInt(e.target.value, 10) || 200)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Maximum number of pages to crawl (default: 200)
+                        </p>
+                    </div>
 
-                    {showAdvanced && (
-                        <div className="space-y-4 pt-2 border-t">
-                            <div className="space-y-2">
-                                <Label htmlFor="pageLimit">Page Limit</Label>
-                                <Input
-                                    id="pageLimit"
-                                    type="number"
-                                    min={1}
-                                    max={1000}
-                                    value={pageLimit}
-                                    onChange={(e) => setPageLimit(parseInt(e.target.value, 10) || 200)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Maximum number of pages to crawl (default: 200)
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="excludePaths">Exclude Paths</Label>
-                                <Textarea
-                                    id="excludePaths"
-                                    placeholder="/blog/page/*&#10;/tag/*&#10;/author/*"
-                                    value={excludePaths}
-                                    onChange={(e) => setExcludePaths(e.target.value)}
-                                    rows={3}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    URL paths to skip (one per line, * for wildcards)
-                                </p>
-                            </div>
-                        </div>
-                    )}
+                    <div className="space-y-2">
+                        <Label htmlFor="excludePaths">Exclude Paths (Optional)</Label>
+                        <Textarea
+                            id="excludePaths"
+                            placeholder="/blog/page/*&#10;/tag/*&#10;/author/*"
+                            value={excludePaths}
+                            onChange={(e) => setExcludePaths(e.target.value)}
+                            rows={3}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            URL paths to skip (one per line, * for wildcards)
+                        </p>
+                    </div>
 
                     {error && (
                         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-md">
@@ -244,4 +228,3 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
         </Dialog>
     )
 }
-
