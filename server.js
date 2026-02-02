@@ -803,7 +803,7 @@ app.get('/api/sites', async (req, res) => {
 // POST /api/sites - Create a new site for crawling
 app.post('/api/sites', async (req, res) => {
     try {
-        const { url, account_id } = req.body
+        const { url, account_id, page_limit = 200, exclude_paths = [] } = req.body
 
         if (!url) {
             return res.status(400).json({ error: 'URL is required' })
@@ -824,6 +824,7 @@ app.post('/api/sites', async (req, res) => {
             .eq('domain', domain)
             .single()
 
+        let siteData
         if (existing) {
             // Update existing site to re-crawl
             const { data, error } = await supabase
@@ -831,7 +832,10 @@ app.post('/api/sites', async (req, res) => {
                 .update({
                     url,
                     account_id: account_id || null,
-                    crawl_status: 'pending',
+                    crawl_status: 'crawling',
+                    page_limit,
+                    exclude_paths,
+                    pages_crawled: 0,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', existing.id)
@@ -841,30 +845,87 @@ app.post('/api/sites', async (req, res) => {
             if (error) {
                 return res.status(500).json({ error: error.message })
             }
+            siteData = { ...data, updated: true }
+        } else {
+            // Create new site
+            const { data, error } = await supabase
+                .from('site_index')
+                .insert({
+                    url,
+                    domain,
+                    account_id: account_id || null,
+                    crawl_status: 'crawling',
+                    page_limit,
+                    exclude_paths,
+                    pages_crawled: 0
+                })
+                .select(`*, accounts(id, account_name)`)
+                .single()
 
-            return res.json({ ...data, updated: true })
+            if (error) {
+                return res.status(500).json({ error: error.message })
+            }
+            siteData = data
         }
 
-        // Create new site
-        const { data, error } = await supabase
-            .from('site_index')
-            .insert({
-                url,
-                domain,
-                account_id: account_id || null,
-                crawl_status: 'pending',
-                pages_crawled: 0
-            })
-            .select(`*, accounts(id, account_name)`)
-            .single()
-
-        if (error) {
-            return res.status(500).json({ error: error.message })
+        // Spawn crawler as background process
+        const { spawn } = await import('child_process')
+        const crawlerArgs = [
+            'crawl-site.js',
+            `--site-id=${siteData.id}`,
+            `--limit=${page_limit}`
+        ]
+        if (exclude_paths.length > 0) {
+            crawlerArgs.push(`--exclude=${exclude_paths.join(',')}`)
         }
 
-        res.status(201).json(data)
+        const crawler = spawn('node', crawlerArgs, {
+            cwd: path.dirname(fileURLToPath(import.meta.url)),
+            detached: true,
+            stdio: 'ignore'
+        })
+        crawler.unref()
+
+        console.log(`🕷️ Started crawler for site ${siteData.id} (${domain})`)
+
+        res.status(existing ? 200 : 201).json(siteData)
     } catch (error) {
         console.error('Create site error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/sites/:id/status - Real-time crawl progress
+app.get('/api/sites/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const { data: site, error } = await supabase
+            .from('site_index')
+            .select('id, domain, crawl_status, pages_crawled, page_limit, current_url, updated_at')
+            .eq('id', id)
+            .single()
+
+        if (error || !site) {
+            return res.status(404).json({ error: 'Site not found' })
+        }
+
+        const percentComplete = site.page_limit > 0
+            ? Math.round((site.pages_crawled / site.page_limit) * 100)
+            : 0
+
+        res.json({
+            id: site.id,
+            domain: site.domain,
+            status: site.crawl_status,
+            pages_crawled: site.pages_crawled,
+            page_limit: site.page_limit,
+            current_url: site.current_url,
+            percent_complete: percentComplete,
+            updated_at: site.updated_at
+        })
+    } catch (error) {
+        console.error('Site status error:', error)
         res.status(500).json({ error: error.message })
     }
 })

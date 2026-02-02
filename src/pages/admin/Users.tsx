@@ -589,7 +589,9 @@ export default function UsersAdmin() {
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="secondary">
-                                            {user.account_count} account{user.account_count !== 1 ? 's' : ''}
+                                            {user.role_name === 'super_admin' || user.role_name === 'admin'
+                                                ? 'All accounts'
+                                                : `${user.account_count} account${user.account_count !== 1 ? 's' : ''}`}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
