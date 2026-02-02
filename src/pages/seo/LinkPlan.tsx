@@ -127,7 +127,7 @@ export default function LinkPlan() {
     })
 
     // Fetch accounts
-    const { data: accounts } = useQuery({
+    const { data: _accounts } = useQuery({
         queryKey: ['accounts-list'],
         queryFn: async () => {
             const { data, error } = await supabase
