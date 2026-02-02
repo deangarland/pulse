@@ -8,6 +8,7 @@ import PlaceholderView from "./pages/Placeholder"
 import Prompts from "./pages/admin/Prompts"
 import Taxonomy from "./pages/admin/Taxonomy"
 import Users from "./pages/admin/Users"
+import Roles from "./pages/admin/Roles"
 import Login from "./pages/Login"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 
@@ -45,6 +46,7 @@ function App() {
           <Route path="/admin/prompts" element={<Prompts />} />
           <Route path="/admin/taxonomy" element={<Taxonomy />} />
           <Route path="/admin/users" element={<Users />} />
+          <Route path="/admin/roles" element={<Roles />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

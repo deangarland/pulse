@@ -443,6 +443,298 @@ app.delete('/api/link-plan/:id', async (req, res) => {
     }
 })
 
+// ============================================
+// Admin API Endpoints
+// ============================================
+
+// GET /api/admin/users - List all users with roles and accounts
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        // Get users from auth.users via RPC
+        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers()
+
+        if (authError) {
+            return res.status(500).json({ error: authError.message })
+        }
+
+        // Get user roles
+        const { data: userRoles, error: rolesError } = await supabase
+            .from('user_roles')
+            .select('user_id, roles(id, name, description)')
+
+        if (rolesError) {
+            return res.status(500).json({ error: rolesError.message })
+        }
+
+        // Get user accounts
+        const { data: userAccounts, error: accountsError } = await supabase
+            .from('user_accounts')
+            .select('user_id, account_id, accounts(id, account_name)')
+
+        if (accountsError) {
+            return res.status(500).json({ error: accountsError.message })
+        }
+
+        // Combine data
+        const users = authUsers.users.map(user => ({
+            id: user.id,
+            email: user.email,
+            created_at: user.created_at,
+            role: userRoles.find(r => r.user_id === user.id)?.roles || null,
+            accounts: userAccounts.filter(a => a.user_id === user.id).map(a => a.accounts)
+        }))
+
+        res.json(users)
+    } catch (error) {
+        console.error('List users error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/admin/users - Create a new user
+app.post('/api/admin/users', async (req, res) => {
+    try {
+        const { email, password, role_id, account_ids } = req.body
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'email and password are required' })
+        }
+
+        // Create user in Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true
+        })
+
+        if (authError) {
+            return res.status(500).json({ error: authError.message })
+        }
+
+        const userId = authData.user.id
+
+        // Assign role if provided
+        if (role_id) {
+            const { error: roleError } = await supabase
+                .from('user_roles')
+                .insert({ user_id: userId, role_id })
+
+            if (roleError) {
+                console.error('Role assignment error:', roleError)
+            }
+        }
+
+        // Assign accounts if provided
+        if (account_ids && account_ids.length > 0) {
+            const accountInserts = account_ids.map(account_id => ({
+                user_id: userId,
+                account_id
+            }))
+
+            const { error: accountError } = await supabase
+                .from('user_accounts')
+                .insert(accountInserts)
+
+            if (accountError) {
+                console.error('Account assignment error:', accountError)
+            }
+        }
+
+        res.json({
+            success: true,
+            user: authData.user,
+            message: 'User created successfully'
+        })
+    } catch (error) {
+        console.error('Create user error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/admin/roles - List all roles with permissions
+app.get('/api/admin/roles', async (req, res) => {
+    try {
+        const { data: roles, error: rolesError } = await supabase
+            .from('roles')
+            .select('*')
+            .order('name')
+
+        if (rolesError) {
+            return res.status(500).json({ error: rolesError.message })
+        }
+
+        // Get role_permissions mapping
+        const { data: rolePermissions, error: rpError } = await supabase
+            .from('role_permissions')
+            .select('role_id, permission_id, permissions(id, name, description)')
+
+        if (rpError) {
+            return res.status(500).json({ error: rpError.message })
+        }
+
+        // Combine data
+        const rolesWithPermissions = roles.map(role => ({
+            ...role,
+            permissions: rolePermissions
+                .filter(rp => rp.role_id === role.id)
+                .map(rp => rp.permissions)
+        }))
+
+        res.json(rolesWithPermissions)
+    } catch (error) {
+        console.error('List roles error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// PUT /api/admin/roles/:id/permissions - Update role permissions
+app.put('/api/admin/roles/:id/permissions', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { permission_ids } = req.body
+
+        if (!Array.isArray(permission_ids)) {
+            return res.status(400).json({ error: 'permission_ids must be an array' })
+        }
+
+        // Delete existing permissions
+        const { error: deleteError } = await supabase
+            .from('role_permissions')
+            .delete()
+            .eq('role_id', id)
+
+        if (deleteError) {
+            return res.status(500).json({ error: deleteError.message })
+        }
+
+        // Insert new permissions
+        if (permission_ids.length > 0) {
+            const inserts = permission_ids.map(permission_id => ({
+                role_id: id,
+                permission_id
+            }))
+
+            const { error: insertError } = await supabase
+                .from('role_permissions')
+                .insert(inserts)
+
+            if (insertError) {
+                return res.status(500).json({ error: insertError.message })
+            }
+        }
+
+        res.json({ success: true, message: 'Role permissions updated' })
+    } catch (error) {
+        console.error('Update role permissions error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/admin/permissions - List all permissions
+app.get('/api/admin/permissions', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('permissions')
+            .select('*')
+            .order('name')
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('List permissions error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/admin/users/:id/permissions - Get user permission overrides
+app.get('/api/admin/users/:id/permissions', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const { data, error } = await supabase
+            .from('user_permission_overrides')
+            .select('*, permissions(id, name, description)')
+            .eq('user_id', id)
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('Get user permissions error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// PUT /api/admin/users/:id/permissions - Update user permission overrides
+app.put('/api/admin/users/:id/permissions', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { overrides } = req.body
+
+        if (!Array.isArray(overrides)) {
+            return res.status(400).json({ error: 'overrides must be an array' })
+        }
+
+        // Delete existing overrides for this user (global only, not account-specific)
+        const { error: deleteError } = await supabase
+            .from('user_permission_overrides')
+            .delete()
+            .eq('user_id', id)
+            .is('account_id', null)
+
+        if (deleteError) {
+            return res.status(500).json({ error: deleteError.message })
+        }
+
+        // Insert new overrides
+        if (overrides.length > 0) {
+            const inserts = overrides.map(o => ({
+                user_id: id,
+                permission_id: o.permission_id,
+                granted: o.granted,
+                account_id: null
+            }))
+
+            const { error: insertError } = await supabase
+                .from('user_permission_overrides')
+                .insert(inserts)
+
+            if (insertError) {
+                return res.status(500).json({ error: insertError.message })
+            }
+        }
+
+        res.json({ success: true, message: 'User permissions updated' })
+    } catch (error) {
+        console.error('Update user permissions error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/admin/accounts - List all accounts for assignment
+app.get('/api/admin/accounts', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('accounts')
+            .select('id, account_name')
+            .order('account_name')
+
+        if (error) {
+            return res.status(500).json({ error: error.message })
+        }
+
+        res.json(data)
+    } catch (error) {
+        console.error('List accounts error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'dist')))
 

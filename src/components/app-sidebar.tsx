@@ -62,6 +62,7 @@ const items = [
         icon: Settings,
         items: [
             { title: "Users", url: "/admin/users" },
+            { title: "Roles", url: "/admin/roles" },
             { title: "Prompts", url: "/admin/prompts" },
             { title: "Taxonomy", url: "/admin/taxonomy" },
         ]

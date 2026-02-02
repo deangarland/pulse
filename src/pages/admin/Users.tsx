@@ -4,6 +4,9 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     Dialog,
     DialogContent,
@@ -26,7 +29,13 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Loader2, Users, Shield, Building2 } from "lucide-react"
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Loader2, Users, Shield, Building2, Plus, Key, Check, X, Minus } from "lucide-react"
 import { toast } from "sonner"
 
 interface User {
@@ -55,11 +64,47 @@ interface UserAccount {
     account_name: string
 }
 
+interface Permission {
+    id: string
+    name: string
+    description: string
+}
+
+interface PermissionOverride {
+    permission_id: string
+    granted: boolean
+    permissions: Permission
+}
+
+// Group permissions by section
+const PERMISSION_SECTIONS: Record<string, string[]> = {
+    'Dashboard': ['dashboard.read'],
+    'SEO Engine': ['pages.read', 'pages.write', 'links.read', 'links.write', 'meta.read', 'meta.write'],
+    'Ads Engine': ['ads.read', 'ads.write'],
+    'Performance': ['performance.read'],
+    'Admin': ['users.read', 'users.write', 'roles.read', 'roles.write', 'prompts.read', 'prompts.write', 'accounts.read', 'accounts.write', 'sites.read', 'sites.write']
+}
+
 export default function UsersAdmin() {
     const queryClient = useQueryClient()
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
     const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
     const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false)
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+    const [isPermissionsDialogOpen, setIsPermissionsDialogOpen] = useState(false)
+
+    // Create user form state
+    const [createForm, setCreateForm] = useState({
+        email: '',
+        password: '',
+        role_id: '',
+        account_ids: [] as string[]
+    })
+
+    // Permission overrides state
+    const [permissionOverrides, setPermissionOverrides] = useState<Record<string, 'inherit' | 'grant' | 'revoke'>>({})
+
+    const apiUrl = import.meta.env.VITE_API_URL || ''
 
     // Fetch users with their roles
     const { data: users, isLoading: usersLoading } = useQuery({
@@ -105,6 +150,16 @@ export default function UsersAdmin() {
         }
     })
 
+    // Fetch all permissions
+    const { data: allPermissions } = useQuery({
+        queryKey: ['all-permissions'],
+        queryFn: async () => {
+            const response = await fetch(`${apiUrl}/api/admin/permissions`)
+            if (!response.ok) throw new Error('Failed to fetch permissions')
+            return response.json() as Promise<Permission[]>
+        }
+    })
+
     // Fetch user's assigned accounts
     const { data: userAccounts, refetch: refetchUserAccounts } = useQuery({
         queryKey: ['user-accounts', selectedUser?.id],
@@ -121,6 +176,43 @@ export default function UsersAdmin() {
             return data as UserAccount[]
         },
         enabled: !!selectedUser
+    })
+
+    // Fetch user's permission overrides
+    const { data: userPermissionOverrides, refetch: refetchUserPermissions } = useQuery({
+        queryKey: ['user-permissions', selectedUser?.id],
+        queryFn: async () => {
+            if (!selectedUser) return []
+            const response = await fetch(`${apiUrl}/api/admin/users/${selectedUser.id}/permissions`)
+            if (!response.ok) throw new Error('Failed to fetch user permissions')
+            return response.json() as Promise<PermissionOverride[]>
+        },
+        enabled: !!selectedUser && isPermissionsDialogOpen
+    })
+
+    // Create user mutation
+    const createUserMutation = useMutation({
+        mutationFn: async (data: typeof createForm) => {
+            const response = await fetch(`${apiUrl}/api/admin/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error || 'Failed to create user')
+            }
+            return response.json()
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+            toast.success('User created successfully')
+            setIsCreateDialogOpen(false)
+            setCreateForm({ email: '', password: '', role_id: '', account_ids: [] })
+        },
+        onError: (error) => {
+            toast.error(`Failed to create user: ${error.message}`)
+        }
     })
 
     // Assign role mutation
@@ -182,6 +274,66 @@ export default function UsersAdmin() {
         }
     })
 
+    // Update user permissions mutation
+    const updatePermissionsMutation = useMutation({
+        mutationFn: async ({ userId, overrides }: { userId: string, overrides: { permission_id: string, granted: boolean }[] }) => {
+            const response = await fetch(`${apiUrl}/api/admin/users/${userId}/permissions`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ overrides })
+            })
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error || 'Failed to update permissions')
+            }
+            return response.json()
+        },
+        onSuccess: () => {
+            refetchUserPermissions()
+            toast.success('Permissions updated')
+        },
+        onError: (error) => {
+            toast.error(`Failed to update permissions: ${error.message}`)
+        }
+    })
+
+    const handleSavePermissions = () => {
+        if (!selectedUser) return
+
+        const overrides: { permission_id: string, granted: boolean }[] = []
+
+        Object.entries(permissionOverrides).forEach(([permName, state]) => {
+            if (state !== 'inherit') {
+                const perm = allPermissions?.find(p => p.name === permName)
+                if (perm) {
+                    overrides.push({
+                        permission_id: perm.id,
+                        granted: state === 'grant'
+                    })
+                }
+            }
+        })
+
+        updatePermissionsMutation.mutate({ userId: selectedUser.id, overrides })
+    }
+
+    const openPermissionsDialog = (user: User) => {
+        setSelectedUser(user)
+        setPermissionOverrides({})
+        setIsPermissionsDialogOpen(true)
+    }
+
+    // When permission overrides load, update state
+    const initializeOverrides = () => {
+        if (userPermissionOverrides) {
+            const overrides: Record<string, 'inherit' | 'grant' | 'revoke'> = {}
+            userPermissionOverrides.forEach(o => {
+                overrides[o.permissions.name] = o.granted ? 'grant' : 'revoke'
+            })
+            setPermissionOverrides(overrides)
+        }
+    }
+
     const getRoleBadgeColor = (roleName: string | null) => {
         switch (roleName) {
             case 'super_admin': return 'bg-red-100 text-red-800 border-red-200'
@@ -189,6 +341,24 @@ export default function UsersAdmin() {
             case 'manager': return 'bg-blue-100 text-blue-800 border-blue-200'
             case 'viewer': return 'bg-gray-100 text-gray-800 border-gray-200'
             default: return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+        }
+    }
+
+    const getPermissionState = (permName: string): 'inherit' | 'grant' | 'revoke' => {
+        return permissionOverrides[permName] || 'inherit'
+    }
+
+    const cyclePermissionState = (permName: string) => {
+        const current = getPermissionState(permName)
+        const next = current === 'inherit' ? 'grant' : current === 'grant' ? 'revoke' : 'inherit'
+        setPermissionOverrides(prev => ({ ...prev, [permName]: next }))
+    }
+
+    const getPermissionIcon = (state: 'inherit' | 'grant' | 'revoke') => {
+        switch (state) {
+            case 'grant': return <Check className="h-4 w-4 text-green-600" />
+            case 'revoke': return <X className="h-4 w-4 text-red-600" />
+            default: return <Minus className="h-4 w-4 text-gray-400" />
         }
     }
 
@@ -209,6 +379,89 @@ export default function UsersAdmin() {
                         Manage users, assign roles, and control account access
                     </p>
                 </div>
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add User
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Create New User</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={(e) => { e.preventDefault(); createUserMutation.mutate(createForm) }} className="space-y-4">
+                            <div>
+                                <Label>Email *</Label>
+                                <Input
+                                    type="email"
+                                    value={createForm.email}
+                                    onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))}
+                                    placeholder="user@example.com"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label>Password *</Label>
+                                <Input
+                                    type="password"
+                                    value={createForm.password}
+                                    onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
+                                    placeholder="••••••••"
+                                    required
+                                    minLength={8}
+                                />
+                            </div>
+                            <div>
+                                <Label>Role</Label>
+                                <Select value={createForm.role_id} onValueChange={v => setCreateForm(f => ({ ...f, role_id: v }))}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a role" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {roles?.map(role => (
+                                            <SelectItem key={role.id} value={role.id}>
+                                                {role.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Account Access</Label>
+                                <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                                    {allAccounts?.map(account => (
+                                        <div key={account.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`account-${account.id}`}
+                                                checked={createForm.account_ids.includes(account.id)}
+                                                onCheckedChange={(checked: boolean) => {
+                                                    if (checked) {
+                                                        setCreateForm(f => ({ ...f, account_ids: [...f.account_ids, account.id] }))
+                                                    } else {
+                                                        setCreateForm(f => ({ ...f, account_ids: f.account_ids.filter(id => id !== account.id) }))
+                                                    }
+                                                }}
+                                            />
+                                            <label htmlFor={`account-${account.id}`} className="text-sm cursor-pointer">
+                                                {account.account_name}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                                <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={createUserMutation.isPending}>
+                                    {createUserMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                                    Create User
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             {/* Stats Cards */}
@@ -408,6 +661,15 @@ export default function UsersAdmin() {
                                                     </div>
                                                 </DialogContent>
                                             </Dialog>
+
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => openPermissionsDialog(user)}
+                                            >
+                                                <Key className="h-4 w-4 mr-1" />
+                                                Permissions
+                                            </Button>
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -416,6 +678,71 @@ export default function UsersAdmin() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* Permissions Override Dialog */}
+            <Dialog open={isPermissionsDialogOpen} onOpenChange={(open) => {
+                setIsPermissionsDialogOpen(open)
+                if (open && userPermissionOverrides) initializeOverrides()
+            }}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Permission Overrides for {selectedUser?.email}</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Click on a permission to toggle between: <span className="text-gray-500">Inherit</span> → <span className="text-green-600">Grant</span> → <span className="text-red-600">Revoke</span>
+                        </p>
+                        <Accordion type="multiple" defaultValue={Object.keys(PERMISSION_SECTIONS)}>
+                            {Object.entries(PERMISSION_SECTIONS).map(([section, perms]) => (
+                                <AccordionItem key={section} value={section}>
+                                    <AccordionTrigger className="text-sm font-medium">
+                                        {section}
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                        <div className="space-y-2">
+                                            {perms.map(permName => {
+                                                const perm = allPermissions?.find(p => p.name === permName)
+                                                if (!perm) return null
+                                                const state = getPermissionState(permName)
+                                                return (
+                                                    <button
+                                                        key={permName}
+                                                        type="button"
+                                                        className="w-full flex items-center justify-between p-2 rounded hover:bg-muted transition-colors text-left"
+                                                        onClick={() => cyclePermissionState(permName)}
+                                                    >
+                                                        <div>
+                                                            <span className="text-sm font-medium">{permName}</span>
+                                                            <p className="text-xs text-muted-foreground">{perm.description}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {getPermissionIcon(state)}
+                                                            <span className={`text-xs ${state === 'grant' ? 'text-green-600' :
+                                                                state === 'revoke' ? 'text-red-600' : 'text-gray-400'
+                                                                }`}>
+                                                                {state.charAt(0).toUpperCase() + state.slice(1)}
+                                                            </span>
+                                                        </div>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            ))}
+                        </Accordion>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <Button variant="outline" onClick={() => setIsPermissionsDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSavePermissions} disabled={updatePermissionsMutation.isPending}>
+                            {updatePermissionsMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Save Permissions
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Roles Reference */}
             <Card>
