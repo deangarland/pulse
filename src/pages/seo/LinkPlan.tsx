@@ -46,12 +46,16 @@ interface LinkPlanEntry {
     type: string
     publisher: string | null
     publisher_da: number | null
+    page_authority: number | null
     destination_url: string | null
     destination_page_id: string | null
     anchor_text: string | null
     status: 'planned' | 'pitched' | 'approved' | 'live'
     notes: string | null
     live_link: string | null
+    source_url: string | null
+    published_date: string | null
+    link_type: 'dofollow' | 'nofollow' | null
     created_at: string
     updated_at: string
     accounts?: {
@@ -480,9 +484,11 @@ export default function LinkPlan() {
                                     <TableHead className="w-[120px]">Month</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Publisher</TableHead>
-                                    <TableHead className="w-[60px]">DA</TableHead>
+                                    <TableHead className="w-[50px]">DA</TableHead>
+                                    <TableHead className="w-[50px]">PA</TableHead>
                                     <TableHead>Destination URL</TableHead>
                                     <TableHead>Anchor</TableHead>
+                                    <TableHead className="w-[80px]">Type</TableHead>
                                     <TableHead className="w-[50px]"></TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -519,6 +525,9 @@ export default function LinkPlan() {
                                         <TableCell>
                                             {entry.publisher_da || '-'}
                                         </TableCell>
+                                        <TableCell>
+                                            {entry.page_authority || '-'}
+                                        </TableCell>
                                         <TableCell className="max-w-[200px] truncate">
                                             {entry.destination_url ? (
                                                 <a
@@ -536,6 +545,13 @@ export default function LinkPlan() {
                                         </TableCell>
                                         <TableCell className="max-w-[150px] truncate">
                                             {entry.anchor_text || '-'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {entry.link_type ? (
+                                                <Badge variant={entry.link_type === 'dofollow' ? 'default' : 'secondary'} className="text-xs">
+                                                    {entry.link_type}
+                                                </Badge>
+                                            ) : '-'}
                                         </TableCell>
                                         <TableCell>
                                             <DropdownMenu>
