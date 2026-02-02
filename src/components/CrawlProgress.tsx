@@ -12,7 +12,7 @@ interface CrawlProgressProps {
 interface SiteStatus {
     id: string
     domain: string
-    status: 'pending' | 'crawling' | 'classifying' | 'complete' | 'error'
+    status: 'pending' | 'in_progress' | 'classifying' | 'complete' | 'error'
     pages_crawled: number
     page_limit: number
     current_url: string | null
@@ -63,7 +63,7 @@ export function CrawlProgress({ siteId, onComplete }: CrawlProgressProps) {
         switch (status.status) {
             case 'pending':
                 return <Badge variant="secondary">Pending</Badge>
-            case 'crawling':
+            case 'in_progress':
                 return <Badge variant="default" className="bg-blue-500">Crawling...</Badge>
             case 'classifying':
                 return <Badge variant="default" className="bg-purple-500">Classifying...</Badge>
@@ -100,7 +100,7 @@ export function CrawlProgress({ siteId, onComplete }: CrawlProgressProps) {
                 {getStatusBadge()}
             </div>
 
-            {(status.status === 'crawling' || status.status === 'classifying') && (
+            {(status.status === 'in_progress' || status.status === 'classifying') && (
                 <>
                     <Progress value={Math.min(status.percent_complete, 100)} className="h-2" />
                     <div className="flex justify-between text-xs text-muted-foreground">

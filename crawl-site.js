@@ -373,7 +373,7 @@ async function crawlSite() {
     let pagesProcessed = 0
 
     try {
-        await updateSiteStatus(SITE_ID, 'crawling')
+        await updateSiteStatus(SITE_ID, 'in_progress')
 
         while (queue.canContinue()) {
             const item = queue.next()
@@ -382,7 +382,7 @@ async function crawlSite() {
             const { url } = item
 
             console.log(`\n📄 [${pagesProcessed + 1}/${PAGE_LIMIT}] ${url}`)
-            await updateSiteStatus(SITE_ID, 'crawling', url)
+            await updateSiteStatus(SITE_ID, 'in_progress', url)
 
             // Fetch page
             const result = await fetchPage(url)
