@@ -491,20 +491,18 @@ app.get('/api/admin/users', async (req, res) => {
     }
 })
 
-// POST /api/admin/users - Create a new user
+// POST /api/admin/users - Invite a new user (sends email invite)
 app.post('/api/admin/users', async (req, res) => {
     try {
-        const { email, password, role_id, account_ids } = req.body
+        const { email, role_id, account_ids } = req.body
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'email and password are required' })
+        if (!email) {
+            return res.status(400).json({ error: 'email is required' })
         }
 
-        // Create user in Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true
+        // Invite user via Supabase Auth (sends invite email)
+        const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
+            redirectTo: `${process.env.VITE_APP_URL || 'http://localhost:4000'}/login`
         })
 
         if (authError) {
@@ -524,7 +522,7 @@ app.post('/api/admin/users', async (req, res) => {
             }
         }
 
-        // Assign accounts if provided
+        // Assign accounts if provided (not needed for super_admin/admin)
         if (account_ids && account_ids.length > 0) {
             const accountInserts = account_ids.map(account_id => ({
                 user_id: userId,
@@ -543,10 +541,38 @@ app.post('/api/admin/users', async (req, res) => {
         res.json({
             success: true,
             user: authData.user,
-            message: 'User created successfully'
+            message: 'Invite sent successfully'
         })
     } catch (error) {
-        console.error('Create user error:', error)
+        console.error('Invite user error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// DELETE /api/admin/users/:id - Delete a user
+app.delete('/api/admin/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        // Delete from user_accounts first (foreign key constraint)
+        await supabase.from('user_accounts').delete().eq('user_id', id)
+
+        // Delete from user_roles
+        await supabase.from('user_roles').delete().eq('user_id', id)
+
+        // Delete from user_permission_overrides
+        await supabase.from('user_permission_overrides').delete().eq('user_id', id)
+
+        // Delete from Supabase Auth
+        const { error: authError } = await supabase.auth.admin.deleteUser(id)
+
+        if (authError) {
+            return res.status(500).json({ error: authError.message })
+        }
+
+        res.json({ success: true, message: 'User deleted successfully' })
+    } catch (error) {
+        console.error('Delete user error:', error)
         res.status(500).json({ error: error.message })
     }
 })

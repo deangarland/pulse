@@ -35,7 +35,7 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Loader2, Users, Shield, Building2, Plus, Key, Check, X, Minus } from "lucide-react"
+import { Loader2, Users, Shield, Building2, Plus, Key, Check, X, Minus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface User {
@@ -104,10 +104,9 @@ export default function UsersAdmin() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
     const [isPermissionsDialogOpen, setIsPermissionsDialogOpen] = useState(false)
 
-    // Create user form state
+    // Create user form state (no password - invite flow)
     const [createForm, setCreateForm] = useState({
         email: '',
-        password: '',
         role_id: '',
         account_ids: [] as string[]
     })
@@ -217,12 +216,12 @@ export default function UsersAdmin() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-users'] })
-            toast.success('User created successfully')
+            toast.success('Invite sent! User will receive an email to set their password.')
             setIsCreateDialogOpen(false)
-            setCreateForm({ email: '', password: '', role_id: '', account_ids: [] })
+            setCreateForm({ email: '', role_id: '', account_ids: [] })
         },
         onError: (error) => {
-            toast.error(`Failed to create user: ${error.message}`)
+            toast.error(`Failed to invite user: ${error.message}`)
         }
     })
 
@@ -282,6 +281,27 @@ export default function UsersAdmin() {
         },
         onError: (error) => {
             toast.error(`Failed to remove account: ${error.message}`)
+        }
+    })
+
+    // Delete user mutation
+    const deleteUserMutation = useMutation({
+        mutationFn: async (userId: string) => {
+            const response = await fetch(`${apiUrl}/api/admin/users/${userId}`, {
+                method: 'DELETE'
+            })
+            if (!response.ok) {
+                const err = await response.json()
+                throw new Error(err.error || 'Failed to delete user')
+            }
+            return response.json()
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+            toast.success('User deleted successfully')
+        },
+        onError: (error) => {
+            toast.error(`Failed to delete user: ${error.message}`)
         }
     })
 
@@ -411,17 +431,9 @@ export default function UsersAdmin() {
                                     placeholder="user@example.com"
                                     required
                                 />
-                            </div>
-                            <div>
-                                <Label>Password *</Label>
-                                <Input
-                                    type="password"
-                                    value={createForm.password}
-                                    onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
-                                    placeholder="••••••••"
-                                    required
-                                    minLength={8}
-                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    User will receive an email invite to set their own password.
+                                </p>
                             </div>
                             <div>
                                 <Label>Role</Label>
@@ -706,6 +718,20 @@ export default function UsersAdmin() {
                                             >
                                                 <Key className="h-4 w-4 mr-1" />
                                                 Permissions
+                                            </Button>
+
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                onClick={() => {
+                                                    if (confirm(`Are you sure you want to delete ${user.email}? This action cannot be undone.`)) {
+                                                        deleteUserMutation.mutate(user.id)
+                                                    }
+                                                }}
+                                                disabled={deleteUserMutation.isPending}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </TableCell>
