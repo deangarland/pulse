@@ -191,12 +191,15 @@ export function EditSheet({
 
             case 'page-picker':
                 return (
-                    <Select value={value || ''} onValueChange={(v) => handleChange(field.key, v || null)}>
+                    <Select
+                        value={value || '__none__'}
+                        onValueChange={(v) => handleChange(field.key, v === '__none__' ? null : v)}
+                    >
                         <SelectTrigger>
                             <SelectValue placeholder="Select a page..." />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">None</SelectItem>
+                            <SelectItem value="__none__">None</SelectItem>
                             {pages.map((page: any) => (
                                 <SelectItem key={page.id} value={page.id}>
                                     {page.path || page.title}
@@ -208,12 +211,15 @@ export function EditSheet({
 
             case 'location-picker':
                 return (
-                    <Select value={value || ''} onValueChange={(v) => handleChange(field.key, v || null)}>
+                    <Select
+                        value={value || '__none__'}
+                        onValueChange={(v) => handleChange(field.key, v === '__none__' ? null : v)}
+                    >
                         <SelectTrigger>
                             <SelectValue placeholder="Select a location..." />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="">None</SelectItem>
+                            <SelectItem value="__none__">None</SelectItem>
                             {locations.map((loc: any) => (
                                 <SelectItem key={loc.id} value={loc.id}>
                                     {loc.location_name} ({loc.city}, {loc.state})

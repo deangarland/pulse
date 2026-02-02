@@ -46,7 +46,15 @@ interface Location {
 
 export function LocationsTable() {
     const queryClient = useQueryClient()
+
+    // Separate state for data and open - matches PageIndex pattern
     const [editingLocation, setEditingLocation] = useState<Location | null>(null)
+    const [editSheetOpen, setEditSheetOpen] = useState(false)
+
+    const handleEditLocation = (location: Location) => {
+        setEditingLocation(location)
+        setEditSheetOpen(true)
+    }
 
     // Fetch locations
     const { data: locations = [], isLoading, refetch } = useQuery({
@@ -100,7 +108,7 @@ export function LocationsTable() {
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7"
-                            onClick={() => setEditingLocation(row)}
+                            onClick={() => handleEditLocation(row)}
                             title="Edit location"
                         >
                             <Pencil className="h-4 w-4" />
@@ -119,9 +127,10 @@ export function LocationsTable() {
 
             <LocationEditSheet
                 location={editingLocation}
-                open={!!editingLocation}
-                onOpenChange={(open) => !open && setEditingLocation(null)}
+                open={editSheetOpen}
+                onOpenChange={setEditSheetOpen}
             />
         </>
     )
 }
+
