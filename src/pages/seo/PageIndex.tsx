@@ -18,6 +18,7 @@ import { ExternalLink, FileText, AlertCircle, RefreshCw, Settings2, ChevronLeft,
 import { Button } from "@/components/ui/button"
 import { PageEditSheet } from "@/components/PageEditSheet"
 import { AddWebsiteModal } from "@/components/AddWebsiteModal"
+import { CrawlProgress } from "@/components/CrawlProgress"
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -181,6 +182,7 @@ export default function PageIndex() {
 
     // Add website modal state
     const [addWebsiteOpen, setAddWebsiteOpen] = useState(false)
+    const [crawlingSiteId, setCrawlingSiteId] = useState<string | null>(null)
 
     const handleEditPage = (page: any) => {
         setEditingPage(page)
@@ -746,9 +748,28 @@ export default function PageIndex() {
             {/* Add Website Modal */}
             <AddWebsiteModal
                 open={addWebsiteOpen}
-                onOpenChange={setAddWebsiteOpen}
-                onSuccess={() => refetch()}
+                onOpenChange={(open) => {
+                    setAddWebsiteOpen(open)
+                    if (!open) setCrawlingSiteId(null)
+                }}
+                onSuccess={(siteId) => {
+                    setCrawlingSiteId(siteId)
+                }}
             />
+
+            {/* Crawl Progress Banner */}
+            {crawlingSiteId && (
+                <div className="fixed bottom-4 right-4 w-96 z-50 shadow-lg rounded-lg border bg-background">
+                    <CrawlProgress
+                        siteId={crawlingSiteId}
+                        onComplete={() => {
+                            refetch()
+                            // Auto-hide after 5 seconds
+                            setTimeout(() => setCrawlingSiteId(null), 5000)
+                        }}
+                    />
+                </div>
+            )}
         </>
     )
 }

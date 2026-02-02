@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
     Select,
     SelectContent,
@@ -18,13 +19,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Loader2, Globe, AlertCircle } from 'lucide-react'
+import { Loader2, Globe, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AddWebsiteModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
-    onSuccess?: () => void
+    onSuccess?: (siteId: string) => void
 }
 
 interface Account {
@@ -32,9 +33,18 @@ interface Account {
     account_name: string
 }
 
+interface SiteResponse {
+    id: string
+    domain: string
+    updated?: boolean
+}
+
 export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteModalProps) {
     const [url, setUrl] = useState('')
     const [accountId, setAccountId] = useState<string>('')
+    const [pageLimit, setPageLimit] = useState(200)
+    const [excludePaths, setExcludePaths] = useState('')
+    const [showAdvanced, setShowAdvanced] = useState(false)
     const [error, setError] = useState('')
     const queryClient = useQueryClient()
     const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -51,13 +61,21 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
 
     // Create site mutation
     const createSite = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (): Promise<SiteResponse> => {
+            // Parse exclude paths (comma or newline separated)
+            const excludeArray = excludePaths
+                .split(/[,\n]/)
+                .map(p => p.trim())
+                .filter(p => p.length > 0)
+
             const response = await fetch(`${apiUrl}/api/sites`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    url,
-                    account_id: accountId || null
+                    url: url.startsWith('http') ? url : `https://${url}`,
+                    account_id: accountId || null,
+                    page_limit: pageLimit,
+                    exclude_paths: excludeArray
                 })
             })
             if (!response.ok) {
@@ -72,13 +90,16 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
             toast.success(
                 data.updated
                     ? `Site ${data.domain} queued for re-crawl`
-                    : `Site ${data.domain} created and queued for crawling`
+                    : `Site ${data.domain} created and crawling started`
             )
             onOpenChange(false)
             setUrl('')
             setAccountId('')
+            setPageLimit(200)
+            setExcludePaths('')
+            setShowAdvanced(false)
             setError('')
-            onSuccess?.()
+            onSuccess?.(data.id)
         },
         onError: (err: Error) => {
             setError(err.message)
@@ -148,10 +169,50 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
                                 ))}
                             </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground">
-                            Link this site to a client account for filtering
-                        </p>
                     </div>
+
+                    {/* Advanced Options Toggle */}
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        Advanced Options
+                    </button>
+
+                    {showAdvanced && (
+                        <div className="space-y-4 pt-2 border-t">
+                            <div className="space-y-2">
+                                <Label htmlFor="pageLimit">Page Limit</Label>
+                                <Input
+                                    id="pageLimit"
+                                    type="number"
+                                    min={1}
+                                    max={1000}
+                                    value={pageLimit}
+                                    onChange={(e) => setPageLimit(parseInt(e.target.value, 10) || 200)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Maximum number of pages to crawl (default: 200)
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="excludePaths">Exclude Paths</Label>
+                                <Textarea
+                                    id="excludePaths"
+                                    placeholder="/blog/page/*&#10;/tag/*&#10;/author/*"
+                                    value={excludePaths}
+                                    onChange={(e) => setExcludePaths(e.target.value)}
+                                    rows={3}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    URL paths to skip (one per line, * for wildcards)
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {error && (
                         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-md">
@@ -175,7 +236,7 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
                             {createSite.isPending && (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            Add Website
+                            Start Crawl
                         </Button>
                     </DialogFooter>
                 </form>
@@ -183,3 +244,4 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
         </Dialog>
     )
 }
+
