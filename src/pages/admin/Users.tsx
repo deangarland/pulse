@@ -441,6 +441,22 @@ export default function UsersAdmin() {
                             <div>
                                 <Label>Account Access</Label>
                                 <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                                    <div className="flex items-center space-x-2 pb-2 border-b mb-2">
+                                        <Checkbox
+                                            id="all-accounts"
+                                            checked={allAccounts && createForm.account_ids.length === allAccounts.length}
+                                            onCheckedChange={(checked: boolean) => {
+                                                if (checked && allAccounts) {
+                                                    setCreateForm(f => ({ ...f, account_ids: allAccounts.map(a => a.id) }))
+                                                } else {
+                                                    setCreateForm(f => ({ ...f, account_ids: [] }))
+                                                }
+                                            }}
+                                        />
+                                        <label htmlFor="all-accounts" className="text-sm font-medium cursor-pointer">
+                                            All Accounts ({allAccounts?.length || 0})
+                                        </label>
+                                    </div>
                                     {allAccounts?.map(account => (
                                         <div key={account.id} className="flex items-center space-x-2">
                                             <Checkbox
