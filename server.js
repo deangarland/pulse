@@ -21,10 +21,15 @@ const supabase = createClient(
     process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY
 )
 
-// OpenAI client
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-})
+// OpenAI client (optional - only needed for generation endpoints)
+let openai = null
+if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY
+    })
+} else {
+    console.log('Warning: OPENAI_API_KEY not set - AI generation endpoints will be unavailable')
+}
 
 // Anthropic (Claude) client
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
@@ -176,6 +181,9 @@ app.post('/api/generate-recommendations', async (req, res) => {
 
         if (model) {
             if (OPENAI_MODELS.includes(model)) {
+                if (!openai) {
+                    return res.status(400).json({ error: 'OpenAI API key not configured' })
+                }
                 provider = 'openai'
                 selectedModel = model
             } else if (ANTHROPIC_MODELS.includes(model)) {

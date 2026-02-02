@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import {
     Sheet,
     SheetContent,
@@ -46,14 +47,32 @@ export interface EditSheetProps {
     saving?: boolean
 }
 
-// Page picker hook
+// Page picker hook - filters by selected account
 function usePages(pageTypeFilter?: string) {
+    const { selectedAccountId } = useAccountStore()
+
     return useQuery({
-        queryKey: ['pages-for-picker', pageTypeFilter],
+        queryKey: ['pages-for-picker', pageTypeFilter, selectedAccountId],
         queryFn: async () => {
+            // First get site_ids for the selected account
+            if (!selectedAccountId) {
+                return []
+            }
+
+            const { data: sites, error: sitesError } = await supabase
+                .from('site_index')
+                .select('id')
+                .eq('account_id', selectedAccountId)
+
+            if (sitesError) throw sitesError
+            if (!sites?.length) return []
+
+            const siteIds = sites.map(s => s.id)
+
             let query = supabase
                 .from('page_index')
                 .select('id, path, title, page_type')
+                .in('site_id', siteIds)
                 .order('path')
 
             if (pageTypeFilter) {
@@ -65,6 +84,7 @@ function usePages(pageTypeFilter?: string) {
             return data || []
         },
         staleTime: 60000, // Cache for 1 minute
+        enabled: !!selectedAccountId,
     })
 }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { useAccountStore } from '@/lib/account-store'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -97,8 +97,7 @@ function formatMonth(dateStr: string) {
 
 export default function LinkPlan() {
     const queryClient = useQueryClient()
-    const [searchParams] = useSearchParams()
-    const globalAccountId = searchParams.get('cid')
+    const { selectedAccountId: globalAccountId } = useAccountStore()
 
     const [selectedAccount, setSelectedAccount] = useState<string>('')
     const [selectedQuarter, setSelectedQuarter] = useState<string>('')
@@ -132,12 +131,13 @@ export default function LinkPlan() {
         }
     })
 
-    // Set selected account from global context or URL param
+    // Set selected account from global context (useAccountStore has the UUID)
+    // Sync whenever the global store changes
     useEffect(() => {
-        if (globalAccountId && !selectedAccount) {
+        if (globalAccountId) {
             setSelectedAccount(globalAccountId)
         }
-    }, [globalAccountId, selectedAccount])
+    }, [globalAccountId])
 
     // Fetch link plans
     const { data: linkPlans, isLoading } = useQuery({
@@ -325,7 +325,7 @@ export default function LinkPlan() {
                                     <Label>Target Month *</Label>
                                     <Input
                                         type="month"
-                                        value={formData.target_month}
+                                        value={formData.target_month ? formData.target_month.substring(0, 7) : ''}
                                         onChange={e => setFormData(f => ({ ...f, target_month: e.target.value + '-01' }))}
                                         required
                                     />
