@@ -6,8 +6,6 @@
  * Usage:
  *   node crawl-site.js --site-id=123 --limit=200 --exclude=/blog/page/*,/tag/*
  */
-
-import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { load } from 'cheerio'
 import axios from 'axios'
@@ -17,11 +15,23 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Initialize Supabase
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-)
+// Lazy-load dotenv only when running as CLI
+const isMainModule = process.argv[1]?.endsWith('crawl-site.js')
+if (isMainModule) {
+    await import('dotenv/config')
+}
+
+// Initialize Supabase lazily
+let _supabase = null
+function getSupabase() {
+    if (!_supabase) {
+        _supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+        )
+    }
+    return _supabase
+}
 
 const DELAY_MS = 500  // Polite delay between requests
 const TIMEOUT_MS = 30000
@@ -268,11 +278,11 @@ async function updateSiteStatus(siteId, status, currentUrl = null) {
     const updates = { crawl_status: status, updated_at: new Date().toISOString() }
     if (currentUrl) updates.current_url = currentUrl
 
-    await supabase.from('site_index').update(updates).eq('id', siteId)
+    await getSupabase().from('site_index').update(updates).eq('id', siteId)
 }
 
 async function updatePagesCount(siteId, count) {
-    await supabase.from('site_index')
+    await getSupabase().from('site_index')
         .update({ pages_crawled: count, updated_at: new Date().toISOString() })
         .eq('id', siteId)
 }
@@ -294,7 +304,7 @@ async function savePage(siteId, url, data) {
     }
 
     // Upsert to handle re-crawls
-    const { error } = await supabase
+    const { error } = await getSupabase()
         .from('page_index')
         .upsert(pageData, { onConflict: 'site_id,path' })
 
@@ -342,7 +352,7 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
     console.log(`   Exclude patterns: ${excludePatterns.length > 0 ? excludePatterns.join(', ') : 'none'}`)
 
     // Get site info
-    const { data: site, error: siteError } = await supabase
+    const { data: site, error: siteError } = await getSupabase()
         .from('site_index')
         .select('*')
         .eq('id', siteId)
@@ -430,7 +440,6 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
 }
 
 // CLI entry point - only runs when executed directly
-const isMainModule = process.argv[1]?.endsWith('crawl-site.js')
 if (isMainModule) {
     const args = process.argv.slice(2)
     const siteIdArg = args.find(a => a.startsWith('--site-id='))
