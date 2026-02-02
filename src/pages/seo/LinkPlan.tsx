@@ -83,7 +83,8 @@ function getStatusStyle(status: string) {
 function formatMonth(dateStr: string) {
     if (!dateStr) return '-'
     const date = new Date(dateStr)
-    return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`
+    // Use UTC methods to avoid timezone shifting the date to previous month
+    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`
 }
 
 function formatDate(dateStr: string | null) {
