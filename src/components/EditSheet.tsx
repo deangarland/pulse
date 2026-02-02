@@ -235,8 +235,6 @@ export function EditSheet({
         }
     }
 
-    if (!data) return null
-
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent className="w-[500px] sm:max-w-[500px] overflow-y-auto">
@@ -247,27 +245,33 @@ export function EditSheet({
                     )}
                 </SheetHeader>
 
-                <div className="grid gap-4 py-6">
-                    {fields.map(field => (
-                        <div key={field.key} className="grid gap-2">
-                            <Label htmlFor={field.key}>
-                                {field.label}
-                                {field.required && <span className="text-red-500 ml-1">*</span>}
-                            </Label>
-                            {renderField(field)}
+                {data ? (
+                    <>
+                        <div className="grid gap-4 py-6">
+                            {fields.map(field => (
+                                <div key={field.key} className="grid gap-2">
+                                    <Label htmlFor={field.key}>
+                                        {field.label}
+                                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                                    </Label>
+                                    {renderField(field)}
+                                </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
 
-                <SheetFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleSave} disabled={saving}>
-                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save Changes
-                    </Button>
-                </SheetFooter>
+                        <SheetFooter>
+                            <Button variant="outline" onClick={() => onOpenChange(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSave} disabled={saving}>
+                                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Save Changes
+                            </Button>
+                        </SheetFooter>
+                    </>
+                ) : (
+                    <div className="py-6 text-muted-foreground">Loading...</div>
+                )}
             </SheetContent>
         </Sheet>
     )
