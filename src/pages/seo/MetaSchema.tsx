@@ -89,20 +89,6 @@ function ReasoningSection({ reasoning, label = "Why" }: { reasoning: string; lab
     )
 }
 
-// Priority badge
-function PriorityBadge({ priority }: { priority: string }) {
-    const colors = {
-        high: 'bg-red-100 text-red-800 border-red-200',
-        medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-        low: 'bg-green-100 text-green-800 border-green-200'
-    }
-    return (
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${colors[priority as keyof typeof colors] || colors.medium}`}>
-            {priority}
-        </span>
-    )
-}
-
 // Schema Component Card for carousel
 function SchemaComponentCard({
     schema,
@@ -325,6 +311,7 @@ export default function MetaSchema() {
     const [selectedPage, setSelectedPage] = useState<string>('')
     const [pageTypeFilter, setPageTypeFilter] = useState<string>('')
     const [selectedModel, setSelectedModel] = useState<string>('gpt-4o')
+    const [useV2, setUseV2] = useState<boolean>(true) // Use template-based v2 by default
 
     // Listen for global account changes
     useEffect(() => {
@@ -435,11 +422,12 @@ export default function MetaSchema() {
         }
     }, [promptSettings])
 
-    // Generate schema mutation (calls unified API)
+    // Generate schema mutation (calls unified API or v2)
     const generateSchemaMutation = useMutation({
-        mutationFn: async ({ pageId }: { pageId: string }) => {
+        mutationFn: async ({ pageId, useV2Schema }: { pageId: string; useV2Schema?: boolean }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
-            const response = await fetch(`${apiUrl}/api/generate-schema`, {
+            const endpoint = useV2Schema ? '/api/generate-schema-v2' : '/api/generate-schema'
+            const response = await fetch(`${apiUrl}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pageId, includeMedium: true })
@@ -459,7 +447,7 @@ export default function MetaSchema() {
                 })
             } else {
                 toast.success('Schema generated!', {
-                    description: `Generated ${data.schemaType} schema`
+                    description: `Generated ${data.schemaType} schema${data.linkedSchemas?.length ? ` + ${data.linkedSchemas.length} linked` : ''}`
                 })
             }
             refetchPage()
@@ -665,23 +653,34 @@ ${schema?.overall_reasoning || 'N/A'}
                             )}
                         </Button>
 
-                        <Button
-                            onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
-                            disabled={!selectedPage || generateSchemaMutation.isPending}
-                            className="min-w-[140px]"
-                        >
-                            {generateSchemaMutation.isPending ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="h-4 w-4 mr-2" />
-                                    Generate Schema
-                                </>
-                            )}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id, useV2Schema: useV2 })}
+                                disabled={!selectedPage || generateSchemaMutation.isPending}
+                                className="min-w-[140px]"
+                            >
+                                {generateSchemaMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Generating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="h-4 w-4 mr-2" />
+                                        Generate Schema
+                                    </>
+                                )}
+                            </Button>
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={useV2}
+                                    onChange={(e) => setUseV2(e.target.checked)}
+                                    className="rounded"
+                                />
+                                v2 (LLM)
+                            </label>
+                        </div>
                     </div>
                 </CardHeader>
             </Card>
@@ -745,8 +744,8 @@ ${schema?.overall_reasoning || 'N/A'}
                                 <CardTitle className="text-base">Schema Markup</CardTitle>
                                 {page.schema_status && (
                                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
-                                            page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
-                                                'bg-yellow-100 text-yellow-800'
+                                        page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
+                                            'bg-yellow-100 text-yellow-800'
                                         }`}>
                                         {page.schema_status}
                                         {page.schema_generated_at && (

@@ -12,7 +12,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog"
-import { DataTable, ColumnDef } from "@/components/DataTable"
+import { DataTable, type ColumnDef } from "@/components/DataTable"
 import { Save, Loader2, MessageSquare, Edit2, Copy, Check } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
