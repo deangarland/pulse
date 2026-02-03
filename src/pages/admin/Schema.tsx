@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -17,8 +17,6 @@ import {
     XCircle,
     AlertCircle,
     Pencil,
-    X,
-    Plus,
     Save
 } from "lucide-react"
 import {
@@ -37,27 +35,16 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog"
 
-interface SchemaConfig {
+// Maps to schema_templates table
+interface SchemaTemplate {
     id: string
-    page_type: string
     schema_type: string
+    page_type: string | null
     tier: 'HIGH' | 'MEDIUM' | 'LOW'
-    auto_generate: boolean
-    reason: string
+    tier_reason: string | null
     required_fields: string[] | null
-    optional_fields: string[] | null
-    linked_schemas: string[] | null
+    data_sources: Record<string, unknown> | null
 }
-
-// Available schema types for linking
-const AVAILABLE_SCHEMAS = [
-    'Organization', 'LocalBusiness', 'MedicalBusiness', 'MedicalClinic',
-    'WebPage', 'WebSite', 'Article', 'BlogPosting', 'FAQPage',
-    'Service', 'MedicalProcedure', 'Product', 'Offer',
-    'Person', 'Physician', 'Review', 'AggregateRating',
-    'BreadcrumbList', 'ContactPoint', 'PostalAddress', 'GeoCoordinates',
-    'ImageObject', 'VideoObject', 'HowTo', 'MedicalCondition'
-]
 
 // Tier badge component
 function TierBadge({ tier }: { tier: string }) {
@@ -76,97 +63,49 @@ function TierBadge({ tier }: { tier: string }) {
 
 // Edit Modal Component
 function SchemaEditModal({
-    config,
+    template,
     open,
     onOpenChange,
     onSave
 }: {
-    config: SchemaConfig | null
+    template: SchemaTemplate | null
     open: boolean
     onOpenChange: (open: boolean) => void
-    onSave: (data: Partial<SchemaConfig>) => void
+    onSave: (data: Partial<SchemaTemplate>) => void
 }) {
-    const [formData, setFormData] = useState<Partial<SchemaConfig>>({})
-    const [newLinkedSchema, setNewLinkedSchema] = useState('')
+    const [tier, setTier] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('LOW')
+    const [tierReason, setTierReason] = useState('')
 
-    // Reset form when config changes
-    useState(() => {
-        if (config) {
-            setFormData({
-                schema_type: config.schema_type,
-                tier: config.tier,
-                reason: config.reason,
-                linked_schemas: config.linked_schemas || [],
-                required_fields: config.required_fields || [],
-                optional_fields: config.optional_fields || [],
-            })
+    // Reset form when template changes
+    useEffect(() => {
+        if (template) {
+            setTier(template.tier)
+            setTierReason(template.tier_reason || '')
         }
-    })
-
-    const linkedSchemas = formData.linked_schemas || config?.linked_schemas || []
-    const requiredFields = formData.required_fields || config?.required_fields || []
-    const optionalFields = formData.optional_fields || config?.optional_fields || []
-
-    const addLinkedSchema = (schema: string) => {
-        if (schema && !linkedSchemas.includes(schema)) {
-            setFormData(prev => ({
-                ...prev,
-                linked_schemas: [...linkedSchemas, schema]
-            }))
-        }
-        setNewLinkedSchema('')
-    }
-
-    const removeLinkedSchema = (schema: string) => {
-        setFormData(prev => ({
-            ...prev,
-            linked_schemas: linkedSchemas.filter(s => s !== schema)
-        }))
-    }
+    }, [template])
 
     const handleSave = () => {
-        onSave(formData)
+        onSave({ tier, tier_reason: tierReason })
         onOpenChange(false)
     }
 
-    if (!config) return null
+    if (!template) return null
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-lg">
                 <DialogHeader>
-                    <DialogTitle>Edit Schema Config: {config.page_type}</DialogTitle>
+                    <DialogTitle>Edit: {template.page_type}</DialogTitle>
                     <DialogDescription>
-                        Configure schema type, linked schemas, and field requirements
+                        Schema type: {template.schema_type}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-6 py-4">
-                    {/* Schema Type */}
-                    <div className="space-y-2">
-                        <Label>Schema Type</Label>
-                        <Select
-                            value={formData.schema_type || config.schema_type}
-                            onValueChange={(v) => setFormData(prev => ({ ...prev, schema_type: v }))}
-                        >
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {AVAILABLE_SCHEMAS.map(s => (
-                                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
+                <div className="space-y-4 py-4">
                     {/* Tier */}
                     <div className="space-y-2">
                         <Label>Priority Tier</Label>
-                        <Select
-                            value={formData.tier || config.tier}
-                            onValueChange={(v) => setFormData(prev => ({ ...prev, tier: v as 'HIGH' | 'MEDIUM' | 'LOW' }))}
-                        >
+                        <Select value={tier} onValueChange={(v) => setTier(v as typeof tier)}>
                             <SelectTrigger>
                                 <SelectValue />
                             </SelectTrigger>
@@ -178,90 +117,44 @@ function SchemaEditModal({
                         </Select>
                     </div>
 
-                    {/* Reason */}
+                    {/* Tier Reason */}
                     <div className="space-y-2">
                         <Label>Reason / Notes</Label>
                         <Textarea
-                            value={formData.reason !== undefined ? formData.reason : config.reason}
-                            onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
-                            placeholder="Why this schema is used for this page type..."
-                            rows={2}
+                            value={tierReason}
+                            onChange={(e) => setTierReason(e.target.value)}
+                            placeholder="Why this tier assignment..."
+                            rows={3}
                         />
                     </div>
 
-                    {/* Linked Schemas */}
-                    <div className="space-y-2">
-                        <Label>Linked Schemas</Label>
-                        <p className="text-xs text-muted-foreground">
-                            Additional schemas to include when generating for this page type
-                        </p>
-                        <div className="flex flex-wrap gap-2 min-h-[40px] p-2 border rounded-md bg-muted/30">
-                            {linkedSchemas.length === 0 && (
-                                <span className="text-sm text-muted-foreground">No linked schemas</span>
-                            )}
-                            {linkedSchemas.map((schema) => (
-                                <Badge key={schema} variant="secondary" className="gap-1">
-                                    {schema}
-                                    <button
-                                        onClick={() => removeLinkedSchema(schema)}
-                                        className="ml-1 hover:text-destructive"
-                                    >
-                                        <X className="h-3 w-3" />
-                                    </button>
-                                </Badge>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
-                            <Select value={newLinkedSchema} onValueChange={setNewLinkedSchema}>
-                                <SelectTrigger className="flex-1">
-                                    <SelectValue placeholder="Select schema to add..." />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-60 overflow-y-auto">
-                                    {AVAILABLE_SCHEMAS
-                                        .filter(s => !linkedSchemas.includes(s))
-                                        .map(s => (
-                                            <SelectItem key={s} value={s}>{s}</SelectItem>
-                                        ))
-                                    }
-                                </SelectContent>
-                            </Select>
-                            <Button
-                                variant="outline"
-                                onClick={() => addLinkedSchema(newLinkedSchema)}
-                                disabled={!newLinkedSchema}
-                            >
-                                <Plus className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* Required Fields (display only for now) */}
+                    {/* Required Fields (read-only) */}
                     <div className="space-y-2">
                         <Label>Required Fields</Label>
                         <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30 min-h-[40px]">
-                            {requiredFields.length === 0 ? (
+                            {(template.required_fields?.length || 0) === 0 ? (
                                 <span className="text-sm text-muted-foreground">None specified</span>
                             ) : (
-                                requiredFields.map((f) => (
+                                template.required_fields?.map((f: string) => (
                                     <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
                                 ))
                             )}
                         </div>
                     </div>
 
-                    {/* Optional Fields (display only for now) */}
-                    <div className="space-y-2">
-                        <Label>Optional Fields</Label>
-                        <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30 min-h-[40px]">
-                            {optionalFields.length === 0 ? (
-                                <span className="text-sm text-muted-foreground">None specified</span>
-                            ) : (
-                                optionalFields.map((f) => (
-                                    <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
-                                ))
-                            )}
+                    {/* Data Sources (read-only preview) */}
+                    {template.data_sources && Object.keys(template.data_sources).length > 0 && (
+                        <div className="space-y-2">
+                            <Label>Data Sources</Label>
+                            <div className="p-2 border rounded-md bg-muted/30 text-xs font-mono max-h-32 overflow-auto">
+                                {Object.keys(template.data_sources).map(key => (
+                                    <div key={key} className="text-muted-foreground">
+                                        {key} → {JSON.stringify((template.data_sources as Record<string, unknown>)[key])}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 <DialogFooter>
@@ -284,74 +177,78 @@ const schemaColumns: ColumnDef[] = [
     { key: 'schema_type', label: 'Schema Type', defaultVisible: true, defaultWidth: 160 },
     {
         key: 'tier', label: 'Tier', defaultVisible: true, defaultWidth: 100,
-        render: (v) => <TierBadge tier={v} />
+        render: (v) => <TierBadge tier={v as string} />
     },
     {
-        key: 'auto_generate', label: 'Auto', defaultVisible: true, defaultWidth: 70,
-        render: (v) => v ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : <span className="text-muted-foreground">—</span>
+        key: 'auto', label: 'Auto', defaultVisible: true, defaultWidth: 70,
+        render: (_v, row) => (row as SchemaTemplate).tier === 'HIGH'
+            ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+            : <span className="text-muted-foreground">—</span>
     },
-    { key: 'reason', label: 'Reason', defaultVisible: true, defaultWidth: 280 },
+    { key: 'tier_reason', label: 'Reason', defaultVisible: true, defaultWidth: 280 },
     {
-        key: 'linked_schemas', label: 'Linked Schemas', defaultVisible: true, defaultWidth: 180,
-        render: (v) => Array.isArray(v) && v.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-                {v.map((s, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
-                ))}
-            </div>
-        ) : <span className="text-muted-foreground">—</span>
+        key: 'required_fields', label: 'Required Fields', defaultVisible: true, defaultWidth: 180,
+        render: (v) => {
+            const fields = v as string[] | null
+            return fields && fields.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                    {fields.slice(0, 3).map((f: string, i: number) => (
+                        <Badge key={i} variant="outline" className="text-xs">{f}</Badge>
+                    ))}
+                    {fields.length > 3 && <Badge variant="outline" className="text-xs">+{fields.length - 3}</Badge>}
+                </div>
+            ) : <span className="text-muted-foreground">—</span>
+        }
     },
 ]
 
 export default function Schema() {
     const queryClient = useQueryClient()
-    const [editingConfig, setEditingConfig] = useState<SchemaConfig | null>(null)
+    const [editingTemplate, setEditingTemplate] = useState<SchemaTemplate | null>(null)
 
-    // Fetch schema configs
-    const { data: schemaConfigs = [], isLoading } = useQuery({
-        queryKey: ['schema_org'],
+    // Fetch schema templates (with page_type set)
+    const { data: templates = [], isLoading } = useQuery({
+        queryKey: ['schema_templates'],
         queryFn: async () => {
             const { data, error } = await supabase
-                .from('schema_org')
-                .select('*')
+                .from('schema_templates')
+                .select('id, schema_type, page_type, tier, tier_reason, required_fields, data_sources')
+                .not('page_type', 'is', null)
                 .order('page_type')
             if (error) throw error
-            return data as SchemaConfig[]
+            return data as SchemaTemplate[]
         }
     })
 
-    // Update config mutation
-    const updateConfigMutation = useMutation({
-        mutationFn: async ({ pageType, updates }: { pageType: string; updates: Partial<SchemaConfig> }) => {
+    // Update template mutation
+    const updateMutation = useMutation({
+        mutationFn: async ({ id, updates }: { id: string; updates: Partial<SchemaTemplate> }) => {
             const { error } = await supabase
-                .from('schema_org')
-                .update({
-                    ...updates,
-                    auto_generate: updates.tier === 'HIGH'
-                })
-                .eq('page_type', pageType)
+                .from('schema_templates')
+                .update(updates)
+                .eq('id', id)
             if (error) throw error
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['schema_org'] })
-            toast.success('Schema config updated')
+            queryClient.invalidateQueries({ queryKey: ['schema_templates'] })
+            toast.success('Template updated')
         },
         onError: (error: Error) => {
             toast.error('Failed to update', { description: error.message })
         }
     })
 
-    // Update tier mutation (for inline tier dropdown)
+    // Update tier inline
     const updateTierMutation = useMutation({
-        mutationFn: async ({ pageType, tier }: { pageType: string; tier: string }) => {
+        mutationFn: async ({ id, tier }: { id: string; tier: string }) => {
             const { error } = await supabase
-                .from('schema_org')
-                .update({ tier, auto_generate: tier === 'HIGH' })
-                .eq('page_type', pageType)
+                .from('schema_templates')
+                .update({ tier })
+                .eq('id', id)
             if (error) throw error
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['schema_org'] })
+            queryClient.invalidateQueries({ queryKey: ['schema_templates'] })
             toast.success('Tier updated')
         },
         onError: (error: Error) => {
@@ -375,29 +272,26 @@ export default function Schema() {
         }
     })
 
-    const handleSaveConfig = (updates: Partial<SchemaConfig>) => {
-        if (editingConfig) {
-            updateConfigMutation.mutate({
-                pageType: editingConfig.page_type,
-                updates
-            })
+    const handleSave = (updates: Partial<SchemaTemplate>) => {
+        if (editingTemplate) {
+            updateMutation.mutate({ id: editingTemplate.id, updates })
         }
     }
 
     // Stats
     const stats = {
-        high: schemaConfigs.filter(s => s.tier === 'HIGH').length,
-        medium: schemaConfigs.filter(s => s.tier === 'MEDIUM').length,
-        low: schemaConfigs.filter(s => s.tier === 'LOW').length,
-        total: schemaConfigs.length
+        high: templates.filter(s => s.tier === 'HIGH').length,
+        medium: templates.filter(s => s.tier === 'MEDIUM').length,
+        low: templates.filter(s => s.tier === 'LOW').length,
+        total: templates.length
     }
 
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight">Schema Configuration</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Schema Templates</h1>
                 <p className="text-muted-foreground">
-                    Manage page type to schema mappings and generation settings
+                    Manage page type to schema mappings and generation tiers
                 </p>
             </div>
 
@@ -406,19 +300,19 @@ export default function Schema() {
                 <Card>
                     <CardContent className="pt-4">
                         <div className="text-2xl font-bold text-green-600">{stats.high}</div>
-                        <div className="text-xs text-muted-foreground">HIGH Priority (Auto)</div>
+                        <div className="text-xs text-muted-foreground">HIGH (Auto-generate)</div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardContent className="pt-4">
                         <div className="text-2xl font-bold text-yellow-600">{stats.medium}</div>
-                        <div className="text-xs text-muted-foreground">MEDIUM Priority</div>
+                        <div className="text-xs text-muted-foreground">MEDIUM (On request)</div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardContent className="pt-4">
                         <div className="text-2xl font-bold text-gray-600">{stats.low}</div>
-                        <div className="text-xs text-muted-foreground">LOW Priority (Skip)</div>
+                        <div className="text-xs text-muted-foreground">LOW (Skip)</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -466,32 +360,32 @@ export default function Schema() {
                 </CardHeader>
             </Card>
 
-            {/* Schema Config Table */}
+            {/* Schema Template Table */}
             <Card>
                 <CardHeader>
                     <CardTitle className="text-base">Page Type Mappings</CardTitle>
-                    <CardDescription>Click the edit button on any row to configure linked schemas and fields</CardDescription>
+                    <CardDescription>Maps page classifier types to schema.org types with generation priorities</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <DataTable
                         columns={schemaColumns}
-                        data={schemaConfigs}
+                        data={templates}
                         loading={isLoading}
-                        storageKey="schema_org_config"
-                        rowActions={(row: SchemaConfig) => (
+                        storageKey="schema_templates_config"
+                        rowActions={(row: SchemaTemplate) => (
                             <div className="flex items-center gap-2">
                                 <Button
                                     size="icon"
                                     variant="ghost"
                                     className="h-7 w-7"
-                                    onClick={() => setEditingConfig(row)}
+                                    onClick={() => setEditingTemplate(row)}
                                 >
                                     <Pencil className="h-4 w-4" />
                                 </Button>
                                 <Select
                                     value={row.tier}
                                     onValueChange={(tier) => updateTierMutation.mutate({
-                                        pageType: row.page_type,
+                                        id: row.id,
                                         tier
                                     })}
                                 >
@@ -512,10 +406,10 @@ export default function Schema() {
 
             {/* Edit Modal */}
             <SchemaEditModal
-                config={editingConfig}
-                open={!!editingConfig}
-                onOpenChange={(open) => !open && setEditingConfig(null)}
-                onSave={handleSaveConfig}
+                template={editingTemplate}
+                open={!!editingTemplate}
+                onOpenChange={(open) => !open && setEditingTemplate(null)}
+                onSave={handleSave}
             />
         </div>
     )
