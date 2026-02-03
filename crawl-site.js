@@ -25,10 +25,16 @@ if (isMainModule) {
 let _supabase = null
 function getSupabase() {
     if (!_supabase) {
-        _supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-        )
+        // Support both VITE_ prefixed (dev) and non-prefixed (Railway) env vars
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+        const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY ||
+            process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
+
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error(`Missing Supabase credentials. URL: ${!!supabaseUrl}, Key: ${!!supabaseKey}`)
+        }
+
+        _supabase = createClient(supabaseUrl, supabaseKey)
     }
     return _supabase
 }
@@ -295,18 +301,20 @@ async function savePage(siteId, url, data) {
         url,
         path,
         title: data.title,
-        meta_description: data.meta_description,
-        h1: data.h1,
         status_code: data.statusCode,
         html_content: data.html,
         cleaned_html: data.cleanedHtml,
+        headings: data.headings || null,
+        meta_tags: data.meta_tags || null,
+        links_internal: data.internal_links || null,
+        links_external: data.external_links || null,
         crawled_at: new Date().toISOString()
     }
 
     // Upsert to handle re-crawls
     const { error } = await getSupabase()
         .from('page_index')
-        .upsert(pageData, { onConflict: 'site_id,path' })
+        .upsert(pageData, { onConflict: 'site_id,url' })
 
     if (error) {
         console.error(`  ❌ Error saving ${path}:`, error.message)
