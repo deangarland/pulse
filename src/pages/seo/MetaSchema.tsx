@@ -34,6 +34,13 @@ interface Page {
         }>
         overall_reasoning: string
     } | null
+    // New unified schema column (from batch generator)
+    recommended_schema: {
+        '@context': string
+        '@graph': any[]
+    } | null
+    schema_status: string | null
+    schema_generated_at: string | null
     recommendation_generated_at: string | null
 }
 
@@ -303,7 +310,43 @@ export default function MetaSchema() {
         }
     }, [promptSettings])
 
-    // Generate recommendations mutation (calls backend API)
+    // Generate schema mutation (calls unified API)
+    const generateSchemaMutation = useMutation({
+        mutationFn: async ({ pageId }: { pageId: string }) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/generate-schema`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId, includeMedium: true })
+            })
+
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to generate schema')
+            }
+
+            return response.json()
+        },
+        onSuccess: (data) => {
+            if (data.skipped) {
+                toast.info('Schema generation skipped', {
+                    description: data.reason
+                })
+            } else {
+                toast.success('Schema generated!', {
+                    description: `Generated ${data.schemaType} schema`
+                })
+            }
+            refetchPage()
+        },
+        onError: (error: Error) => {
+            toast.error('Generation failed', {
+                description: error.message
+            })
+        }
+    })
+
+    // Generate meta recommendations mutation (existing API for meta tags)
     const generateMutation = useMutation({
         mutationFn: async ({ pageId, model }: { pageId: string; model: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -482,6 +525,7 @@ ${schema?.overall_reasoning || 'N/A'}
                             onClick={() => page && generateMutation.mutate({ pageId: page.id, model: selectedModel })}
                             disabled={!selectedPage || generateMutation.isPending}
                             className="min-w-[120px]"
+                            variant="outline"
                         >
                             {generateMutation.isPending ? (
                                 <>
@@ -490,8 +534,26 @@ ${schema?.overall_reasoning || 'N/A'}
                                 </>
                             ) : (
                                 <>
+                                    <Tag className="h-4 w-4 mr-2" />
+                                    Generate Meta
+                                </>
+                            )}
+                        </Button>
+
+                        <Button
+                            onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
+                            disabled={!selectedPage || generateSchemaMutation.isPending}
+                            className="min-w-[140px]"
+                        >
+                            {generateSchemaMutation.isPending ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
                                     <Sparkles className="h-4 w-4 mr-2" />
-                                    Generate
+                                    Generate Schema
                                 </>
                             )}
                         </Button>
@@ -586,48 +648,93 @@ ${schema?.overall_reasoning || 'N/A'}
                                 {/* After - Recommended Schema */}
                                 <div>
                                     {(() => {
-                                        const schemas = page.schema_recommendation?.schemas;
-                                        if (!schemas || schemas.length === 0) {
+                                        // Prefer recommended_schema (from batch generator), fallback to schema_recommendation
+                                        const batchSchema = page.recommended_schema;
+                                        const legacySchemas = page.schema_recommendation?.schemas;
+
+                                        // Use batch schema if available
+                                        if (batchSchema && batchSchema['@graph']?.length > 0) {
+                                            const schemas = batchSchema['@graph'];
                                             return (
-                                                <div className="text-sm text-muted-foreground italic">
-                                                    No recommendations yet - click Generate
+                                                <div className="space-y-4">
+                                                    {/* Status badge */}
+                                                    {page.schema_status && (
+                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
+                                                                page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
+                                                                    'bg-yellow-100 text-yellow-800'
+                                                            }`}>
+                                                            {page.schema_status}
+                                                        </span>
+                                                    )}
+
+                                                    {/* Combined Schema - Copy All */}
+                                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
+                                                            {page.schema_generated_at && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    Generated {new Date(page.schema_generated_at).toLocaleDateString()}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <JsonPreview data={batchSchema} />
+                                                    </div>
+
+                                                    {/* Individual Schema Breakdown */}
+                                                    <div className="border-t pt-4">
+                                                        <div className="text-xs font-medium text-muted-foreground mb-3">Schema Types:</div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {schemas.map((schema: any, i: number) => (
+                                                                <span key={i} className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
+                                                                    {schema['@type']}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             );
                                         }
 
-                                        // Combine all schemas into one script tag
-                                        const combinedSchema = schemas.length === 1
-                                            ? schemas[0].json_ld
-                                            : { "@context": "https://schema.org", "@graph": schemas.map(s => s.json_ld) };
+                                        // Fallback to legacy schema_recommendation format
+                                        if (legacySchemas && legacySchemas.length > 0) {
+                                            const combinedSchema = legacySchemas.length === 1
+                                                ? legacySchemas[0].json_ld
+                                                : { "@context": "https://schema.org", "@graph": legacySchemas.map(s => s.json_ld) };
 
-                                        return (
-                                            <div className="space-y-6">
-                                                {/* Combined Schema - Copy All */}
-                                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
+                                            return (
+                                                <div className="space-y-6">
+                                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
+                                                        </div>
+                                                        <JsonPreview data={combinedSchema} />
                                                     </div>
-                                                    <JsonPreview data={combinedSchema} />
-                                                </div>
 
-                                                {/* Individual Schema Breakdown */}
-                                                <div className="border-t pt-4">
-                                                    <div className="text-xs font-medium text-muted-foreground mb-3">Individual Schemas Breakdown:</div>
-                                                    <div className="space-y-4">
-                                                        {schemas.map((schema, i) => (
-                                                            <div key={i} className="space-y-2 bg-gray-50 rounded-lg p-3">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
-                                                                        {schema.type}
-                                                                    </span>
-                                                                    <PriorityBadge priority={schema.priority} />
+                                                    <div className="border-t pt-4">
+                                                        <div className="text-xs font-medium text-muted-foreground mb-3">Individual Schemas Breakdown:</div>
+                                                        <div className="space-y-4">
+                                                            {legacySchemas.map((schema, i) => (
+                                                                <div key={i} className="space-y-2 bg-gray-50 rounded-lg p-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
+                                                                            {schema.type}
+                                                                        </span>
+                                                                        <PriorityBadge priority={schema.priority} />
+                                                                    </div>
+                                                                    <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
+                                                                    <JsonPreview data={schema.json_ld} />
                                                                 </div>
-                                                                <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
-                                                                <JsonPreview data={schema.json_ld} />
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
+                                            );
+                                        }
+
+                                        // No schema available
+                                        return (
+                                            <div className="text-sm text-muted-foreground italic">
+                                                No recommendations yet - click Generate Schema
                                             </div>
                                         );
                                     })()}

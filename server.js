@@ -414,6 +414,417 @@ app.post('/api/generate-recommendations', async (req, res) => {
 })
 
 // ============================================
+// Unified Schema Generator API
+// Uses batch-generate-schemas logic for single page
+// ============================================
+
+// Helper: Extract page fields using LLM (for procedures)
+async function extractProcedureFieldsWithLLM(page) {
+    if (!openai) return { bodyLocation: null, procedureType: null, howPerformed: null, preparation: null, followup: null }
+
+    const content = `
+Title: ${page.title || ''}
+Description: ${page.meta_tags?.description || ''}
+Content: ${(page.main_content || '').substring(0, 3000)}
+    `.trim()
+
+    const prompt = `Analyze this medical/aesthetic procedure page and extract schema.org fields.
+
+PAGE CONTENT:
+${content}
+
+Extract the following (respond ONLY with valid JSON, no markdown):
+{
+  "bodyLocation": "The primary body part treated (e.g., 'Face', 'Nose', 'Lips', 'Forehead', 'Neck', 'Eyelids', etc.) or null if unclear",
+  "procedureType": "One of: 'NoninvasiveProcedure' (injections, lasers, peels), 'SurgicalProcedure' (incisions, surgery), 'PercutaneousProcedure' (catheter-based), or null if unclear",
+  "howPerformed": "A 1-2 sentence summary of how this procedure is performed. Return null if the page doesn't describe procedure steps.",
+  "preparation": "Pre-procedure instructions mentioned on the page (e.g., 'Avoid blood thinners for 7 days'). Return null if page doesn't mention preparation.",
+  "followup": "Post-procedure expectations mentioned on the page (e.g., 'Results last 6-12 months', 'Minimal downtime'). Return null if page doesn't mention followup/recovery."
+}
+
+CRITICAL: Only include information that is explicitly stated on the page. Return null for any field where the page does not provide that information.`
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+            max_tokens: 350,
+            response_format: { type: 'json_object' }
+        })
+
+        const result = JSON.parse(response.choices[0].message.content)
+        const normalize = (val) => val === 'null' || val === null || val === '' ? null : val
+
+        return {
+            bodyLocation: normalize(result.bodyLocation),
+            procedureType: normalize(result.procedureType),
+            howPerformed: normalize(result.howPerformed),
+            preparation: normalize(result.preparation),
+            followup: normalize(result.followup),
+            tokens: { input: response.usage?.prompt_tokens || 0, output: response.usage?.completion_tokens || 0 }
+        }
+    } catch (error) {
+        console.error('LLM extraction error:', error.message)
+        return { bodyLocation: null, procedureType: null, howPerformed: null, preparation: null, followup: null, tokens: { input: 0, output: 0 } }
+    }
+}
+
+// Helper: Extract team member fields using LLM
+async function extractTeamMemberFieldsWithLLM(page) {
+    if (!openai) return { name: null, jobTitle: null, credentials: null, isPhysician: false, specialties: [], education: null, tokens: { input: 0, output: 0 } }
+
+    const content = `
+Title: ${page.title || ''}
+Description: ${page.meta_tags?.description || ''}
+Content: ${(page.main_content || '').substring(0, 2000)}
+    `.trim()
+
+    const prompt = `Analyze this staff member profile page and extract information.
+
+PAGE CONTENT:
+${content}
+
+Extract the following (respond ONLY with valid JSON, no markdown):
+{
+  "name": "Full name of the person (e.g., 'Dr. John Smith' or 'Jane Doe, RN')",
+  "jobTitle": "Their job title (e.g., 'Medical Director', 'Lead Esthetician', 'PA-C')",
+  "credentials": "Professional credentials/suffixes (e.g., 'MD', 'PA-C', 'RN', 'NP-C')",
+  "isPhysician": true if they are a Doctor/MD/DO/Physician, false otherwise,
+  "specialties": ["Array of specialties or areas of expertise mentioned"],
+  "education": "Educational institution mentioned (or null if not found)"
+}
+
+Return null for any field not explicitly mentioned on the page.`
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+            max_tokens: 300,
+            response_format: { type: 'json_object' }
+        })
+
+        const result = JSON.parse(response.choices[0].message.content)
+        const normalize = (val) => val === 'null' || val === null || val === '' ? null : val
+
+        return {
+            name: normalize(result.name),
+            jobTitle: normalize(result.jobTitle),
+            credentials: normalize(result.credentials),
+            isPhysician: result.isPhysician === true,
+            specialties: Array.isArray(result.specialties) ? result.specialties.filter(s => s) : [],
+            education: normalize(result.education),
+            tokens: { input: response.usage?.prompt_tokens || 0, output: response.usage?.completion_tokens || 0 }
+        }
+    } catch (error) {
+        console.error('Team member extraction error:', error.message)
+        return { name: null, jobTitle: null, credentials: null, isPhysician: false, specialties: [], education: null, tokens: { input: 0, output: 0 } }
+    }
+}
+
+// POST /api/generate-schema - Unified schema generator using batch logic
+app.post('/api/generate-schema', async (req, res) => {
+    try {
+        const { pageId, includeMedium = false } = req.body
+
+        if (!pageId) {
+            return res.status(400).json({ error: 'pageId is required' })
+        }
+
+        // 1. Fetch page data
+        const { data: page, error: pageError } = await supabase
+            .from('page_index')
+            .select('id, site_id, path, url, title, meta_tags, headings, main_content, html_content, page_type')
+            .eq('id', pageId)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        if (!page.page_type) {
+            return res.status(400).json({ error: 'Page not classified. Run classifier first.' })
+        }
+
+        // 2. Fetch schema config from schema_org table
+        const { data: schemaConfig, error: configError } = await supabase
+            .from('schema_org')
+            .select('*')
+            .eq('page_type', page.page_type)
+            .single()
+
+        if (configError || !schemaConfig) {
+            return res.status(400).json({ error: `No schema config found for page type: ${page.page_type}` })
+        }
+
+        // Check tier - skip LOW, optionally skip MEDIUM
+        if (schemaConfig.tier === 'LOW') {
+            // Save as skipped
+            await supabase
+                .from('page_index')
+                .update({
+                    schema_status: 'skipped',
+                    schema_errors: [{ type: 'skipped', message: schemaConfig.reason }],
+                    schema_generated_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            return res.json({
+                success: true,
+                skipped: true,
+                reason: `LOW tier - ${schemaConfig.reason}`,
+                pageType: page.page_type
+            })
+        }
+
+        if (schemaConfig.tier === 'MEDIUM' && !includeMedium) {
+            await supabase
+                .from('page_index')
+                .update({
+                    schema_status: 'skipped',
+                    schema_errors: [{ type: 'skipped', message: 'MEDIUM tier - use includeMedium to generate' }],
+                    schema_generated_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            return res.json({
+                success: true,
+                skipped: true,
+                reason: 'MEDIUM tier - enable includeMedium to generate',
+                pageType: page.page_type
+            })
+        }
+
+        // 3. Fetch site data for provider info
+        const { data: site } = await supabase
+            .from('site_index')
+            .select('url, site_profile, account_id')
+            .eq('id', page.site_id)
+            .single()
+
+        const siteUrl = site?.url || ''
+        const siteProfile = site?.site_profile || {}
+        const pageUrl = page.url || `${siteUrl}${page.path}`
+
+        // Track tokens for AI usage
+        let totalInputTokens = 0
+        let totalOutputTokens = 0
+
+        // 4. Generate schema based on page type
+        const schemas = []
+        const startTime = Date.now()
+
+        switch (page.page_type) {
+            case 'PROCEDURE': {
+                const title = page.title?.split('|')[0]?.trim() || 'Treatment'
+                const desc = page.meta_tags?.description || ''
+
+                // Extract fields with LLM
+                const extracted = await extractProcedureFieldsWithLLM(page)
+                totalInputTokens += extracted.tokens?.input || 0
+                totalOutputTokens += extracted.tokens?.output || 0
+
+                const procedureSchema = {
+                    "@type": "MedicalProcedure",
+                    "@id": `${pageUrl}#procedure`,
+                    "name": title,
+                    "url": pageUrl,
+                    "mainEntityOfPage": pageUrl,
+                    "description": desc,
+                    "image": page.meta_tags?.['og:image'] || siteProfile?.image_url || undefined,
+                    "provider": siteProfile?.business_name ? {
+                        "@type": "MedicalBusiness",
+                        "@id": `${siteUrl}/#organization`,
+                        "name": siteProfile.business_name,
+                        "url": siteUrl,
+                        "telephone": siteProfile.phone
+                    } : undefined
+                }
+
+                // Add extracted fields if present
+                if (extracted.procedureType) procedureSchema.procedureType = extracted.procedureType
+                if (extracted.bodyLocation) procedureSchema.bodyLocation = extracted.bodyLocation
+                if (extracted.preparation) procedureSchema.preparation = extracted.preparation
+                if (extracted.howPerformed) procedureSchema.howPerformed = extracted.howPerformed
+                if (extracted.followup) procedureSchema.followup = extracted.followup
+
+                // Remove undefined values
+                Object.keys(procedureSchema).forEach(key => {
+                    if (procedureSchema[key] === undefined) delete procedureSchema[key]
+                })
+
+                schemas.push(procedureSchema)
+                break
+            }
+
+            case 'RESOURCE': {
+                const title = page.title?.split('|')[0]?.trim() || ''
+                const desc = page.meta_tags?.description || ''
+
+                schemas.push({
+                    "@type": "BlogPosting",
+                    "headline": title,
+                    "description": desc,
+                    "url": pageUrl,
+                    "datePublished": page.meta_tags?.['article:published_time'] || new Date().toISOString(),
+                    "dateModified": page.meta_tags?.['article:modified_time'] || new Date().toISOString(),
+                    "author": siteProfile?.owner?.name ? {
+                        "@type": "Person",
+                        "name": siteProfile.owner.name,
+                        "@id": `${siteUrl}/#physician`
+                    } : undefined,
+                    "publisher": siteProfile?.business_name ? {
+                        "@type": "Organization",
+                        "@id": `${siteUrl}/#organization`
+                    } : undefined
+                })
+                break
+            }
+
+            case 'GALLERY': {
+                const title = page.title?.split('|')[0]?.split('-')[0]?.trim() || 'Gallery'
+                schemas.push({
+                    "@type": "ImageGallery",
+                    "name": `${title} Before & After Gallery`,
+                    "description": `Before and after photos for ${title}.`,
+                    "url": pageUrl
+                })
+                break
+            }
+
+            case 'TEAM_MEMBER': {
+                const extracted = await extractTeamMemberFieldsWithLLM(page)
+                totalInputTokens += extracted.tokens?.input || 0
+                totalOutputTokens += extracted.tokens?.output || 0
+
+                const title = page.title?.split('|')[0]?.split('-')[0]?.trim() || ''
+                const desc = page.meta_tags?.description || ''
+
+                const personSchema = {
+                    "@type": extracted.isPhysician ? "Physician" : "Person",
+                    "@id": `${pageUrl}#person`,
+                    "name": extracted.name || title,
+                    "url": pageUrl,
+                    "description": desc,
+                    "image": page.meta_tags?.['og:image'] || undefined,
+                    "worksFor": siteProfile?.business_name ? {
+                        "@type": "MedicalBusiness",
+                        "@id": `${siteUrl}/#organization`,
+                        "name": siteProfile.business_name
+                    } : undefined
+                }
+
+                if (extracted.jobTitle) personSchema.jobTitle = extracted.jobTitle
+                if (extracted.credentials) personSchema.honorificSuffix = extracted.credentials
+                if (extracted.specialties?.length > 0) personSchema.knowsAbout = extracted.specialties
+                if (extracted.education) personSchema.alumniOf = { "@type": "EducationalOrganization", "name": extracted.education }
+
+                Object.keys(personSchema).forEach(key => {
+                    if (personSchema[key] === undefined) delete personSchema[key]
+                })
+
+                schemas.push(personSchema)
+                break
+            }
+
+            case 'HOMEPAGE':
+            case 'CONTACT':
+            case 'LOCATION': {
+                // LocalBusiness schema
+                const addr = siteProfile?.address
+                if (addr?.street && addr?.city) {
+                    schemas.push({
+                        "@type": siteProfile?.business_type || "MedicalBusiness",
+                        "@id": `${siteUrl}#localbusiness`,
+                        "name": siteProfile.business_name,
+                        "url": siteUrl,
+                        "telephone": siteProfile.phone,
+                        "address": {
+                            "@type": "PostalAddress",
+                            "streetAddress": addr.street,
+                            "addressLocality": addr.city,
+                            "addressRegion": addr.state,
+                            "postalCode": addr.zip,
+                            "addressCountry": addr.country || "US"
+                        }
+                    })
+                } else {
+                    return res.json({
+                        success: true,
+                        skipped: true,
+                        reason: 'Missing required business address in site_profile',
+                        pageType: page.page_type
+                    })
+                }
+                break
+            }
+
+            default:
+                return res.json({
+                    success: true,
+                    skipped: true,
+                    reason: `Schema generation not implemented for ${page.page_type}`,
+                    pageType: page.page_type
+                })
+        }
+
+        // 5. Wrap in @graph structure
+        const wrappedSchema = schemas.length > 0 ? {
+            "@context": "https://schema.org",
+            "@graph": schemas
+        } : null
+
+        // 6. Save to recommended_schema column
+        const requestDurationMs = Date.now() - startTime
+
+        const { error: updateError } = await supabase
+            .from('page_index')
+            .update({
+                recommended_schema: wrappedSchema,
+                schema_status: 'validated',
+                schema_errors: null,
+                schema_generated_at: new Date().toISOString()
+            })
+            .eq('id', pageId)
+
+        if (updateError) {
+            return res.status(500).json({ error: `Failed to save schema: ${updateError.message}` })
+        }
+
+        // Log AI usage if tokens were used
+        if (totalInputTokens > 0 || totalOutputTokens > 0) {
+            await logAIUsage({
+                action: 'generate_schema',
+                pageId,
+                pageUrl,
+                provider: 'openai',
+                model: 'gpt-4o-mini',
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                requestDurationMs,
+                success: true
+            })
+        }
+
+        res.json({
+            success: true,
+            skipped: false,
+            schema: wrappedSchema,
+            pageType: page.page_type,
+            schemaType: schemaConfig.schema_type,
+            tokens: { input: totalInputTokens, output: totalOutputTokens },
+            message: 'Schema generated successfully'
+        })
+
+    } catch (error) {
+        console.error('Generate schema error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ============================================
 // Link Plan API Endpoints
 // ============================================
 
