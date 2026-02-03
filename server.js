@@ -934,7 +934,7 @@ app.get('/api/sites', async (req, res) => {
 // POST /api/sites - Create a new site for crawling
 app.post('/api/sites', async (req, res) => {
     try {
-        const { url, account_id, page_limit = 200, exclude_paths = [] } = req.body
+        const { url, account_id, page_limit = 200, exclude_paths = [], run_classifier = true } = req.body
 
         if (!url) {
             return res.status(400).json({ error: 'URL is required' })
@@ -1002,7 +1002,7 @@ app.post('/api/sites', async (req, res) => {
         // Run crawler in-process (fire and forget)
         // Import dynamically to avoid circular dependencies
         import('./crawl-site.js').then(({ runCrawl }) => {
-            runCrawl(siteData.id, page_limit, exclude_paths)
+            runCrawl(siteData.id, page_limit, exclude_paths, run_classifier)
                 .then(() => console.log(`✅ Crawl complete for ${domain}`))
                 .catch(err => console.error(`❌ Crawl failed for ${domain}:`, err.message))
         }).catch(err => {

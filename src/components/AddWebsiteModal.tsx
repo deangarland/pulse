@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +45,7 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
     const [accountId, setAccountId] = useState<string>('')
     const [pageLimit, setPageLimit] = useState(200)
     const [excludePaths, setExcludePaths] = useState('')
+    const [runClassifier, setRunClassifier] = useState(true)
     const [error, setError] = useState('')
     const queryClient = useQueryClient()
     const apiUrl = import.meta.env.VITE_API_URL || ''
@@ -74,7 +76,8 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
                     url: url.startsWith('http') ? url : `https://${url}`,
                     account_id: accountId || null,
                     page_limit: pageLimit,
-                    exclude_paths: excludeArray
+                    exclude_paths: excludeArray,
+                    run_classifier: runClassifier
                 })
             })
             if (!response.ok) {
@@ -96,6 +99,7 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
             setAccountId('')
             setPageLimit(200)
             setExcludePaths('')
+            setRunClassifier(true)
             setError('')
             onSuccess?.(data.id)
         },
@@ -196,6 +200,17 @@ export function AddWebsiteModal({ open, onOpenChange, onSuccess }: AddWebsiteMod
                         <p className="text-xs text-muted-foreground">
                             URL paths to skip (one per line, * for wildcards)
                         </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                        <Checkbox
+                            id="runClassifier"
+                            checked={runClassifier}
+                            onCheckedChange={(checked) => setRunClassifier(checked === true)}
+                        />
+                        <Label htmlFor="runClassifier" className="text-sm font-normal cursor-pointer">
+                            Also run Classifier?
+                        </Label>
                     </div>
 
                     {error && (
