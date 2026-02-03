@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { DataTable, type ColumnDef } from "@/components/DataTable"
 import { toast } from "sonner"
 import {
@@ -13,7 +17,11 @@ import {
     Loader2,
     CheckCircle,
     XCircle,
-    AlertCircle
+    AlertCircle,
+    Pencil,
+    X,
+    Plus,
+    Save
 } from "lucide-react"
 import {
     Select,
@@ -22,6 +30,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog"
 
 interface SchemaConfig {
     id: string
@@ -35,6 +51,16 @@ interface SchemaConfig {
     linked_schemas: string[] | null
 }
 
+// Available schema types for linking
+const AVAILABLE_SCHEMAS = [
+    'Organization', 'LocalBusiness', 'MedicalBusiness', 'MedicalClinic',
+    'WebPage', 'WebSite', 'Article', 'BlogPosting', 'FAQPage',
+    'Service', 'MedicalProcedure', 'Product', 'Offer',
+    'Person', 'Physician', 'Review', 'AggregateRating',
+    'BreadcrumbList', 'ContactPoint', 'PostalAddress', 'GeoCoordinates',
+    'ImageObject', 'VideoObject', 'HowTo', 'MedicalCondition'
+]
+
 // Tier badge component
 function TierBadge({ tier }: { tier: string }) {
     const variants: Record<string, { class: string; icon: React.ReactNode }> = {
@@ -47,6 +73,210 @@ function TierBadge({ tier }: { tier: string }) {
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${v.class}`}>
             {v.icon} {tier}
         </span>
+    )
+}
+
+// Edit Modal Component
+function SchemaEditModal({
+    config,
+    open,
+    onOpenChange,
+    onSave
+}: {
+    config: SchemaConfig | null
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    onSave: (data: Partial<SchemaConfig>) => void
+}) {
+    const [formData, setFormData] = useState<Partial<SchemaConfig>>({})
+    const [newLinkedSchema, setNewLinkedSchema] = useState('')
+
+    // Reset form when config changes
+    useState(() => {
+        if (config) {
+            setFormData({
+                schema_type: config.schema_type,
+                tier: config.tier,
+                reason: config.reason,
+                linked_schemas: config.linked_schemas || [],
+                required_fields: config.required_fields || [],
+                optional_fields: config.optional_fields || [],
+            })
+        }
+    })
+
+    const linkedSchemas = formData.linked_schemas || config?.linked_schemas || []
+    const requiredFields = formData.required_fields || config?.required_fields || []
+    const optionalFields = formData.optional_fields || config?.optional_fields || []
+
+    const addLinkedSchema = (schema: string) => {
+        if (schema && !linkedSchemas.includes(schema)) {
+            setFormData(prev => ({
+                ...prev,
+                linked_schemas: [...linkedSchemas, schema]
+            }))
+        }
+        setNewLinkedSchema('')
+    }
+
+    const removeLinkedSchema = (schema: string) => {
+        setFormData(prev => ({
+            ...prev,
+            linked_schemas: linkedSchemas.filter(s => s !== schema)
+        }))
+    }
+
+    const handleSave = () => {
+        onSave(formData)
+        onOpenChange(false)
+    }
+
+    if (!config) return null
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Edit Schema Config: {config.page_type}</DialogTitle>
+                    <DialogDescription>
+                        Configure schema type, linked schemas, and field requirements
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-6 py-4">
+                    {/* Schema Type */}
+                    <div className="space-y-2">
+                        <Label>Schema Type</Label>
+                        <Select
+                            value={formData.schema_type || config.schema_type}
+                            onValueChange={(v) => setFormData(prev => ({ ...prev, schema_type: v }))}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {AVAILABLE_SCHEMAS.map(s => (
+                                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Tier */}
+                    <div className="space-y-2">
+                        <Label>Priority Tier</Label>
+                        <Select
+                            value={formData.tier || config.tier}
+                            onValueChange={(v) => setFormData(prev => ({ ...prev, tier: v as 'HIGH' | 'MEDIUM' | 'LOW' }))}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="HIGH">HIGH - Auto-generate</SelectItem>
+                                <SelectItem value="MEDIUM">MEDIUM - Manual trigger</SelectItem>
+                                <SelectItem value="LOW">LOW - Skip</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Reason */}
+                    <div className="space-y-2">
+                        <Label>Reason / Notes</Label>
+                        <Textarea
+                            value={formData.reason !== undefined ? formData.reason : config.reason}
+                            onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
+                            placeholder="Why this schema is used for this page type..."
+                            rows={2}
+                        />
+                    </div>
+
+                    {/* Linked Schemas */}
+                    <div className="space-y-2">
+                        <Label>Linked Schemas</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Additional schemas to include when generating for this page type
+                        </p>
+                        <div className="flex flex-wrap gap-2 min-h-[40px] p-2 border rounded-md bg-muted/30">
+                            {linkedSchemas.length === 0 && (
+                                <span className="text-sm text-muted-foreground">No linked schemas</span>
+                            )}
+                            {linkedSchemas.map((schema) => (
+                                <Badge key={schema} variant="secondary" className="gap-1">
+                                    {schema}
+                                    <button
+                                        onClick={() => removeLinkedSchema(schema)}
+                                        className="ml-1 hover:text-destructive"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </Badge>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <Select value={newLinkedSchema} onValueChange={setNewLinkedSchema}>
+                                <SelectTrigger className="flex-1">
+                                    <SelectValue placeholder="Select schema to add..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {AVAILABLE_SCHEMAS
+                                        .filter(s => !linkedSchemas.includes(s))
+                                        .map(s => (
+                                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                                        ))
+                                    }
+                                </SelectContent>
+                            </Select>
+                            <Button
+                                variant="outline"
+                                onClick={() => addLinkedSchema(newLinkedSchema)}
+                                disabled={!newLinkedSchema}
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Required Fields (display only for now) */}
+                    <div className="space-y-2">
+                        <Label>Required Fields</Label>
+                        <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30 min-h-[40px]">
+                            {requiredFields.length === 0 ? (
+                                <span className="text-sm text-muted-foreground">None specified</span>
+                            ) : (
+                                requiredFields.map((f) => (
+                                    <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Optional Fields (display only for now) */}
+                    <div className="space-y-2">
+                        <Label>Optional Fields</Label>
+                        <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30 min-h-[40px]">
+                            {optionalFields.length === 0 ? (
+                                <span className="text-sm text-muted-foreground">None specified</span>
+                            ) : (
+                                optionalFields.map((f) => (
+                                    <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleSave}>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -77,6 +307,7 @@ const schemaColumns: ColumnDef[] = [
 
 export default function Schema() {
     const queryClient = useQueryClient()
+    const [editingConfig, setEditingConfig] = useState<SchemaConfig | null>(null)
 
     // Fetch schema configs
     const { data: schemaConfigs = [], isLoading } = useQuery({
@@ -91,7 +322,28 @@ export default function Schema() {
         }
     })
 
-    // Update tier mutation
+    // Update config mutation
+    const updateConfigMutation = useMutation({
+        mutationFn: async ({ pageType, updates }: { pageType: string; updates: Partial<SchemaConfig> }) => {
+            const { error } = await supabase
+                .from('schema_org')
+                .update({
+                    ...updates,
+                    auto_generate: updates.tier === 'HIGH'
+                })
+                .eq('page_type', pageType)
+            if (error) throw error
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['schema_org'] })
+            toast.success('Schema config updated')
+        },
+        onError: (error: Error) => {
+            toast.error('Failed to update', { description: error.message })
+        }
+    })
+
+    // Update tier mutation (for inline tier dropdown)
     const updateTierMutation = useMutation({
         mutationFn: async ({ pageType, tier }: { pageType: string; tier: string }) => {
             const { error } = await supabase
@@ -112,7 +364,6 @@ export default function Schema() {
     const bulkGenerateMutation = useMutation({
         mutationFn: async (_options: { tier: 'HIGH' | 'MEDIUM' | 'ALL' }) => {
             // TODO: Call bulk generation endpoint
-            // For now, just simulate
             await new Promise(resolve => setTimeout(resolve, 2000))
             return { generated: 10 }
         },
@@ -125,6 +376,15 @@ export default function Schema() {
             toast.error('Bulk generation failed', { description: error.message })
         }
     })
+
+    const handleSaveConfig = (updates: Partial<SchemaConfig>) => {
+        if (editingConfig) {
+            updateConfigMutation.mutate({
+                pageType: editingConfig.page_type,
+                updates
+            })
+        }
+    }
 
     // Stats
     const stats = {
@@ -211,16 +471,8 @@ export default function Schema() {
             {/* Schema Config Table */}
             <Card>
                 <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-base">Page Type Mappings</CardTitle>
-                            <CardDescription>Configure which schemas apply to each page type</CardDescription>
-                        </div>
-                        <Button variant="outline" size="sm">
-                            <Settings2 className="h-4 w-4 mr-2" />
-                            Edit Fields
-                        </Button>
-                    </div>
+                    <CardTitle className="text-base">Page Type Mappings</CardTitle>
+                    <CardDescription>Click the edit button on any row to configure linked schemas and fields</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <DataTable
@@ -230,6 +482,14 @@ export default function Schema() {
                         storageKey="schema_org_config"
                         rowActions={(row: SchemaConfig) => (
                             <div className="flex items-center gap-2">
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7"
+                                    onClick={() => setEditingConfig(row)}
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
                                 <Select
                                     value={row.tier}
                                     onValueChange={(tier) => updateTierMutation.mutate({
@@ -251,6 +511,14 @@ export default function Schema() {
                     />
                 </CardContent>
             </Card>
+
+            {/* Edit Modal */}
+            <SchemaEditModal
+                config={editingConfig}
+                open={!!editingConfig}
+                onOpenChange={(open) => !open && setEditingConfig(null)}
+                onSave={handleSaveConfig}
+            />
         </div>
     )
 }
