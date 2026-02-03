@@ -167,12 +167,10 @@ app.post('/api/generate-recommendations', async (req, res) => {
             'gpt-3.5-turbo'
         ]
         const ANTHROPIC_MODELS = [
-            'claude-sonnet-4-5', 'claude-sonnet-4', 'claude-3-7-sonnet-latest',
-            'claude-opus-4', 'claude-haiku-4'
+            'claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5'
         ]
         const GEMINI_MODELS = [
-            'gemini-3-flash', 'gemini-3-pro',
-            'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'
+            'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
         ]
 
         // Determine provider and validate model

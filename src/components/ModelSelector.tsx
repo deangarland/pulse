@@ -31,19 +31,15 @@ export const AI_MODELS: Model[] = [
     // OpenAI - GPT-3.5
     { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', provider: 'openai', description: 'Fast & cheap' },
 
-    // Claude (Anthropic) - Updated Feb 2026
-    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', provider: 'claude', description: 'Latest & best' },
-    { value: 'claude-sonnet-4', label: 'Claude Sonnet 4', provider: 'claude', description: 'Fast & smart' },
-    { value: 'claude-opus-4', label: 'Claude Opus 4', provider: 'claude', description: 'Most capable' },
-    { value: 'claude-haiku-4', label: 'Claude Haiku 4', provider: 'claude', description: 'Fastest' },
-    { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet', provider: 'claude', description: 'Legacy' },
+    // Claude (Anthropic) - 4.5 series (Feb 2026)
+    { value: 'claude-opus-4-5', label: 'Claude 4.5 Opus', provider: 'claude', description: 'Peak intelligence' },
+    { value: 'claude-sonnet-4-5', label: 'Claude 4.5 Sonnet', provider: 'claude', description: 'Balanced, agents' },
+    { value: 'claude-haiku-4-5', label: 'Claude 4.5 Haiku', provider: 'claude', description: 'Fast & cheap' },
 
-    // Gemini (Google) - Updated Feb 2026
-    { value: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', description: 'Latest & fastest' },
-    { value: 'gemini-3-pro', label: 'Gemini 3 Pro', provider: 'gemini', description: 'Most capable' },
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', description: '1M context' },
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', description: 'Fast & smart' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini', description: 'Legacy' },
+    // Gemini (Google) - 2.5 series (Feb 2026)
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', description: 'Best quality, reasoning' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', description: 'Fast, multimodal' },
+    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite', provider: 'gemini', description: 'Cheapest option' },
 ]
 
 // Provider colors for visual distinction
