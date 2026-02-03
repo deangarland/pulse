@@ -162,9 +162,9 @@ function SchemaEditModal({
                                                     <Badge
                                                         variant="outline"
                                                         className={`text-[10px] ${config.source === 'llm' ? 'bg-purple-50 border-purple-200 text-purple-700' :
-                                                                config.source === 'site' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                                                                    config.source === 'location' ? 'bg-green-50 border-green-200 text-green-700' :
-                                                                        'bg-gray-50 border-gray-200 text-gray-700'
+                                                            config.source === 'site' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                                                config.source === 'location' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                    'bg-gray-50 border-gray-200 text-gray-700'
                                                             }`}
                                                     >
                                                         {config.source === 'llm' ? '🤖 AI Extract' :
@@ -263,24 +263,6 @@ export default function Schema() {
         },
         onError: (error: Error) => {
             toast.error('Failed to update', { description: error.message })
-        }
-    })
-
-    // Update tier inline
-    const updateTierMutation = useMutation({
-        mutationFn: async ({ id, tier }: { id: string; tier: string }) => {
-            const { error } = await supabase
-                .from('schema_templates')
-                .update({ tier })
-                .eq('id', id)
-            if (error) throw error
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['schema_templates'] })
-            toast.success('Tier updated')
-        },
-        onError: (error: Error) => {
-            toast.error('Failed to update tier', { description: error.message })
         }
     })
 
@@ -401,32 +383,14 @@ export default function Schema() {
                         loading={isLoading}
                         storageKey="schema_templates_config"
                         rowActions={(row: SchemaTemplate) => (
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-7 w-7"
-                                    onClick={() => setEditingTemplate(row)}
-                                >
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Select
-                                    value={row.tier}
-                                    onValueChange={(tier) => updateTierMutation.mutate({
-                                        id: row.id,
-                                        tier
-                                    })}
-                                >
-                                    <SelectTrigger className="h-7 w-24">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="HIGH">HIGH</SelectItem>
-                                        <SelectItem value="MEDIUM">MEDIUM</SelectItem>
-                                        <SelectItem value="LOW">LOW</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => setEditingTemplate(row)}
+                            >
+                                <Pencil className="h-4 w-4" />
+                            </Button>
                         )}
                     />
                 </CardContent>
