@@ -955,14 +955,7 @@ app.post('/api/sites', async (req, res) => {
 
         let siteData
         if (existing) {
-            // Delete old pages before re-crawling
-            await supabase
-                .from('page_index')
-                .delete()
-                .eq('site_id', existing.id)
-            console.log(`🗑️ Deleted old pages for ${domain} before re-crawl`)
-
-            // Update existing site to re-crawl
+            // Re-crawl existing site (pages will be upserted, preserving user-generated content)
             const { data, error } = await supabase
                 .from('site_index')
                 .update({
