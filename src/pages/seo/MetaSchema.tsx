@@ -311,7 +311,6 @@ export default function MetaSchema() {
     const [selectedPage, setSelectedPage] = useState<string>('')
     const [pageTypeFilter, setPageTypeFilter] = useState<string>('')
     const [selectedModel, setSelectedModel] = useState<string>('gpt-4o')
-    const [useV2, setUseV2] = useState<boolean>(true) // Use template-based v2 by default
 
     // Listen for global account changes
     useEffect(() => {
@@ -422,12 +421,11 @@ export default function MetaSchema() {
         }
     }, [promptSettings])
 
-    // Generate schema mutation (calls unified API or v2)
+    // Generate schema mutation (uses v2 template-based endpoint)
     const generateSchemaMutation = useMutation({
-        mutationFn: async ({ pageId, useV2Schema }: { pageId: string; useV2Schema?: boolean }) => {
+        mutationFn: async ({ pageId }: { pageId: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
-            const endpoint = useV2Schema ? '/api/generate-schema-v2' : '/api/generate-schema'
-            const response = await fetch(`${apiUrl}${endpoint}`, {
+            const response = await fetch(`${apiUrl}/api/generate-schema-v2`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pageId, includeMedium: true })
@@ -653,34 +651,23 @@ ${schema?.overall_reasoning || 'N/A'}
                             )}
                         </Button>
 
-                        <div className="flex items-center gap-2">
-                            <Button
-                                onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id, useV2Schema: useV2 })}
-                                disabled={!selectedPage || generateSchemaMutation.isPending}
-                                className="min-w-[140px]"
-                            >
-                                {generateSchemaMutation.isPending ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Generating...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="h-4 w-4 mr-2" />
-                                        Generate Schema
-                                    </>
-                                )}
-                            </Button>
-                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={useV2}
-                                    onChange={(e) => setUseV2(e.target.checked)}
-                                    className="rounded"
-                                />
-                                v2 (LLM)
-                            </label>
-                        </div>
+                        <Button
+                            onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
+                            disabled={!selectedPage || generateSchemaMutation.isPending}
+                            className="min-w-[140px]"
+                        >
+                            {generateSchemaMutation.isPending ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="h-4 w-4 mr-2" />
+                                    Generate Schema
+                                </>
+                            )}
+                        </Button>
                     </div>
                 </CardHeader>
             </Card>

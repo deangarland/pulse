@@ -933,52 +933,97 @@ app.post('/api/generate-schema-v2', async (req, res) => {
             .eq('name', 'Schema: Full JSON-LD Generation')
             .single()
 
-        // Prepare content preview (first 2000 chars of main content)
-        const contentPreview = (page.main_content || page.html_content || '').substring(0, 2000)
+        // Prepare content preview (first 3000 chars of main content for better context)
+        const contentPreview = (page.main_content || page.html_content || '').substring(0, 3000)
 
-        // 6. Build the prompt
-        const systemPrompt = promptData?.system_prompt || `You are an expert at generating JSON-LD schema markup for healthcare/medical websites. 
-Generate valid schema.org JSON-LD that enhances search visibility.
-Always use @graph format. Use @id references to link entities.
-Return ONLY valid JSON, no markdown.`
+        // 6. Build the prompt with comprehensive skill rules
+        const systemPrompt = promptData?.system_prompt || `You are an expert at generating JSON-LD schema markup for healthcare/medical websites.
 
-        const userPrompt = `Generate JSON-LD schema markup for this page.
+CRITICAL RULES:
+1. LocalBusiness/Organization schema goes on HOMEPAGE ONLY - not on every page
+2. Each page type has specific required schemas - follow the requirements strictly
+3. Use @graph format with @id references to link entities on the same page
+4. For cross-page references, include essential info inline (not just @id)
+5. NEVER use placeholders like [EXTRACT], [TODO], or empty strings - omit fields if data unavailable
+6. Only include FAQ schema if the page has visible FAQ content
+7. Schema must accurately reflect visible page content
 
-PAGE TYPE: ${page.page_type}
+VALIDATION REQUIREMENTS:
+- All required properties must be present
+- FAQ answers must be > 50 characters
+- Descriptions > 30 characters
+- URLs must be fully qualified (https://)
+- Dates in ISO 8601 format
+- Phone numbers include area code
+
+Return ONLY valid JSON, no markdown or explanation.`
+
+        // Build page type specific requirements
+        const pageTypeRequirements = {
+            'HOMEPAGE': 'Required: LocalBusiness (with address, phone, hours, geo), Organization. Optional: WebSite with SearchAction, AggregateRating.',
+            'PROCEDURE': 'Required: MedicalProcedure (name, url, description, provider, bodyLocation, howPerformed). Optional: FAQPage if FAQ content exists. NO LocalBusiness on procedure pages.',
+            'TEAM_MEMBER': 'Required: Person or Physician (name, jobTitle, image, worksFor, knowsAbout, credentials). Board certifications go in memberOf.',
+            'RESOURCE': 'Required: BlogPosting or Article (headline, datePublished, author with full details, publisher).',
+            'GALLERY': 'Required: ImageGallery or CollectionPage (name, description). Optional: ImageObject for each image.',
+            'CONTACT': 'Required: ContactPage with mainEntity referencing Organization. Include BreadcrumbList.',
+            'LOCATION': 'Required: LocalBusiness for that specific location with full address, geo, and hours.',
+            'ABOUT': 'Required: AboutPage or ProfilePage. If showing multiple people, use Organization. If single person, use Person/Physician.',
+            'CONDITION': 'Required: MedicalCondition with name, description. Optional: FAQPage if content exists.',
+            'CATEGORY': 'Required: CollectionPage with ItemList of linked items.',
+            'GENERIC': 'Minimal schema - BreadcrumbList only unless page has specific rich content.'
+        }
+
+        const requirements = pageTypeRequirements[page.page_type] || pageTypeRequirements['GENERIC']
+
+        const userPrompt = `Generate JSON-LD schema markup for this ${page.page_type} page.
+
 PAGE URL: ${pageUrl}
 SITE URL: ${siteUrl}
 
+PAGE TYPE REQUIREMENTS:
+${requirements}
+
 PAGE DATA:
 Title: ${page.title || 'N/A'}
-Description: ${page.meta_tags?.description || 'N/A'}
-Content Preview: ${contentPreview}
+Meta Description: ${page.meta_tags?.description || 'N/A'}
+Headings: ${JSON.stringify(page.headings?.slice(0, 5) || [])}
+Content Preview:
+${contentPreview}
 
-SITE PROFILE:
+SITE PROFILE (use for provider/organization info):
 Business Name: ${siteProfile?.business_name || 'Unknown'}
 Phone: ${siteProfile?.phone || 'N/A'}
 Business Type: ${siteProfile?.business_type || 'MedicalBusiness'}
 Address: ${JSON.stringify(siteProfile?.address || {}, null, 2)}
+Geo: ${JSON.stringify(siteProfile?.geo || {})}
+Hours: ${JSON.stringify(siteProfile?.hours || [])}
+Owner: ${JSON.stringify(siteProfile?.owner || {})}
+Social Media: ${JSON.stringify(siteProfile?.social_media || [])}
+Rating: ${JSON.stringify(siteProfile?.rating || {})}
 
-PRIMARY SCHEMA: ${schemaConfig.schema_type}
-LINKED SCHEMAS TO INCLUDE: ${linkedSchemas.join(', ') || 'None'}
+PRIMARY SCHEMA TYPE: ${schemaConfig.schema_type}
+ADDITIONAL SCHEMAS TO INCLUDE: ${linkedSchemas.join(', ') || 'None'}
 
-TEMPLATES AVAILABLE:
+TEMPLATE FIELD REFERENCE:
 ${allSchemaTypes.map(type => {
             const t = templateMap[type]
-            if (!t) return `- ${type}: (no template)`
+            if (!t) return `- ${type}: (no template available)`
             return `- ${type}:
-  Base fields: ${JSON.stringify(t.base_fields)}
-  Required: ${t.required_fields?.join(', ') || 'none'}
-  Nesting: ${JSON.stringify(t.nesting_rules || {})}`
+  Required fields: ${t.required_fields?.join(', ') || 'none'}
+  Optional fields: ${t.optional_fields?.join(', ') || 'none'}
+  Nesting rules: ${JSON.stringify(t.nesting_rules || {})}`
         }).join('\n')}
 
-Generate a complete @graph array with all schemas properly nested. Include:
-1. The primary ${schemaConfig.schema_type} schema with all applicable fields
-2. Any linked schemas (${linkedSchemas.join(', ') || 'none'})
-3. Proper @id references for linking
-4. Nested structures (e.g., provider inside MedicalProcedure)
+INSTRUCTIONS:
+1. Generate a complete @graph array based on the page type requirements above
+2. Include the primary ${schemaConfig.schema_type} schema with all applicable fields from the page content
+3. Add linked schemas: ${linkedSchemas.join(', ') || 'none'}
+4. Use @id format: "${pageUrl}#[schema-type-lowercase]" (e.g., "${pageUrl}#procedure")
+5. For MedicalProcedure: extract bodyLocation, howPerformed, preparation, followup from content if mentioned
+6. For provider/performedBy: include full inline details from site profile
+7. Omit any field where data is not available - do NOT use placeholders
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON:
 {
   "@context": "https://schema.org",
   "@graph": [...]
@@ -1024,15 +1069,71 @@ Return ONLY valid JSON with this structure:
             })
         }
 
-        // 8. Save to database
+        // 8. Validate schema based on skill rules
+        const validationErrors = []
+        const graph = generatedSchema['@graph'] || []
+
+        // Check for placeholder text
+        const jsonStr = JSON.stringify(generatedSchema)
+        if (/\[EXTRACT|\[TODO|\[PHONE|\[ADDRESS|\[NAME/i.test(jsonStr)) {
+            validationErrors.push('Schema contains placeholder text - should be omitted or filled')
+        }
+
+        // Validate each schema in graph
+        graph.forEach((schema, idx) => {
+            const schemaType = schema['@type']
+
+            // Check for empty strings
+            Object.entries(schema).forEach(([key, value]) => {
+                if (value === '' || value === 'N/A' || value === 'Unknown') {
+                    validationErrors.push(`${schemaType}: Empty or placeholder value for '${key}'`)
+                }
+            })
+
+            // FAQ specific validation
+            if (schemaType === 'FAQPage' && schema.mainEntity) {
+                schema.mainEntity.forEach((q, i) => {
+                    const answerText = q.acceptedAnswer?.text || ''
+                    if (answerText.length < 50) {
+                        validationErrors.push(`FAQ answer ${i + 1} is too short (${answerText.length} chars, need 50+)`)
+                    }
+                })
+            }
+
+            // MedicalProcedure: check for required fields
+            if (schemaType === 'MedicalProcedure') {
+                if (!schema.name) validationErrors.push('MedicalProcedure: missing required field "name"')
+                if (!schema.url) validationErrors.push('MedicalProcedure: missing required field "url"')
+                if (!schema.description && !schema.howPerformed) {
+                    validationErrors.push('MedicalProcedure: should have description or howPerformed')
+                }
+            }
+
+            // LocalBusiness: check it's only on homepage
+            if ((schemaType === 'LocalBusiness' || schemaType.includes('Business')) && page.page_type !== 'HOMEPAGE' && page.page_type !== 'LOCATION' && page.page_type !== 'CONTACT') {
+                validationErrors.push(`LocalBusiness schema should only be on HOMEPAGE/LOCATION/CONTACT pages, not ${page.page_type}`)
+            }
+
+            // BlogPosting/Article: check required fields
+            if (schemaType === 'BlogPosting' || schemaType === 'Article') {
+                if (!schema.headline) validationErrors.push(`${schemaType}: missing required field "headline"`)
+                if (!schema.datePublished) validationErrors.push(`${schemaType}: missing required field "datePublished"`)
+                if (!schema.author) validationErrors.push(`${schemaType}: missing required field "author"`)
+            }
+        })
+
+        // Determine final status
+        const schemaStatus = validationErrors.length === 0 ? 'validated' : 'generated'
+
+        // 9. Save to database
         const requestDurationMs = Date.now() - startTime
 
         const { error: updateError } = await supabase
             .from('page_index')
             .update({
                 recommended_schema: generatedSchema,
-                schema_status: 'validated',
-                schema_errors: null,
+                schema_status: schemaStatus,
+                schema_errors: validationErrors.length > 0 ? validationErrors : null,
                 schema_generated_at: new Date().toISOString()
             })
             .eq('id', pageId)
@@ -1064,7 +1165,14 @@ Return ONLY valid JSON with this structure:
             tokens: { input: totalInputTokens, output: totalOutputTokens },
             model: model,
             durationMs: requestDurationMs,
-            message: 'Schema generated with v2 template-based system'
+            validation: {
+                status: schemaStatus,
+                errors: validationErrors.length > 0 ? validationErrors : null,
+                passedRules: validationErrors.length === 0
+            },
+            message: validationErrors.length === 0
+                ? 'Schema generated and validated successfully'
+                : `Schema generated with ${validationErrors.length} validation warning(s)`
         })
 
     } catch (error) {
