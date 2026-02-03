@@ -4,7 +4,6 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
     Dialog,
@@ -13,8 +12,8 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog"
-import { DataTable, type ColumnDef } from "@/components/DataTable"
-import { Save, Loader2, MessageSquare, HelpCircle, Edit2, Copy, Check } from "lucide-react"
+import { DataTable, ColumnDef } from "@/components/DataTable"
+import { Save, Loader2, MessageSquare, Edit2, Copy, Check } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 
@@ -123,68 +122,68 @@ export default function Prompts() {
         )
     }
 
-    // Table columns
-    const columns: ColumnDef<Prompt>[] = [
+    // Table columns using DataTable's ColumnDef format
+    const columns: ColumnDef[] = [
         {
-            accessorKey: 'name',
-            header: 'Prompt Name',
-            cell: ({ row }) => (
+            key: 'name',
+            label: 'Prompt Name',
+            defaultWidth: 300,
+            render: (_value: string, row: Prompt) => (
                 <div className="flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                        <div className="font-medium">{row.original.name}</div>
-                        {row.original.description && (
-                            <div className="text-xs text-muted-foreground truncate max-w-xs">
-                                {row.original.description}
+                    <MessageSquare className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0">
+                        <div className="font-medium truncate">{row.name}</div>
+                        {row.description && (
+                            <div className="text-xs text-muted-foreground truncate">
+                                {row.description}
                             </div>
                         )}
                     </div>
                 </div>
-            ),
-            size: 300
+            )
         },
         {
-            accessorKey: 'default_model',
-            header: 'Default Model',
-            cell: ({ row }) => (
+            key: 'default_model',
+            label: 'Default Model',
+            defaultWidth: 130,
+            render: (value: string | null) => (
                 <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
-                    {row.original.default_model || 'gpt-4o'}
+                    {value || 'gpt-4o'}
                 </span>
-            ),
-            size: 120
+            )
         },
         {
-            accessorKey: 'system_prompt',
-            header: 'System Prompt',
-            cell: ({ row }) => (
-                <div className="flex items-center gap-2 max-w-md">
+            key: 'system_prompt',
+            label: 'System Prompt',
+            defaultWidth: 300,
+            render: (value: string, row: Prompt) => (
+                <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground truncate">
-                        {row.original.system_prompt.substring(0, 80)}...
+                        {value.substring(0, 80)}...
                     </span>
-                    <CopyButton text={row.original.system_prompt} />
+                    <CopyButton text={row.system_prompt} />
                 </div>
-            ),
-            size: 300
+            )
         },
         {
-            accessorKey: 'user_prompt_template',
-            header: 'User Template',
-            cell: ({ row }) => (
-                <span className={`text-xs ${row.original.user_prompt_template ? 'text-green-600' : 'text-muted-foreground'}`}>
-                    {row.original.user_prompt_template ? '✓ Set' : '—'}
+            key: 'user_prompt_template',
+            label: 'User Template',
+            defaultWidth: 100,
+            render: (value: string | null) => (
+                <span className={`text-xs ${value ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {value ? '✓ Set' : '—'}
                 </span>
-            ),
-            size: 100
+            )
         },
         {
-            accessorKey: 'updated_at',
-            header: 'Updated',
-            cell: ({ row }) => (
+            key: 'updated_at',
+            label: 'Updated',
+            defaultWidth: 100,
+            render: (value: string) => (
                 <span className="text-xs text-muted-foreground">
-                    {formatDate(row.original.updated_at)}
+                    {formatDate(value)}
                 </span>
-            ),
-            size: 100
+            )
         }
     ]
 
@@ -209,14 +208,6 @@ export default function Prompts() {
                         Manage system prompts and default AI models for content generation
                     </p>
                 </div>
-                <Dialog>
-                    <Button variant="outline" size="sm" className="gap-2" asChild>
-                        <label>
-                            <HelpCircle className="h-4 w-4" />
-                            How to choose a model
-                        </label>
-                    </Button>
-                </Dialog>
             </div>
 
             <Card>
@@ -236,6 +227,7 @@ export default function Prompts() {
                         loading={isLoading}
                         storageKey="prompts_table"
                         rowActions={rowActions}
+                        emptyMessage="No prompts found. Run database migrations to create default prompts."
                     />
                 </CardContent>
             </Card>

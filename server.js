@@ -825,6 +825,255 @@ app.post('/api/generate-schema', async (req, res) => {
 })
 
 // ============================================
+// POST /api/generate-schema-v2 - Template-based schema generation with LLM
+// Uses schema_templates table and prompts for flexible schema generation
+// ============================================
+app.post('/api/generate-schema-v2', async (req, res) => {
+    try {
+        const { pageId, includeMedium = false, useTemplates = true } = req.body
+
+        if (!pageId) {
+            return res.status(400).json({ error: 'pageId is required' })
+        }
+
+        const startTime = Date.now()
+
+        // 1. Fetch page data
+        const { data: page, error: pageError } = await supabase
+            .from('page_index')
+            .select('id, site_id, path, url, title, meta_tags, headings, main_content, html_content, page_type')
+            .eq('id', pageId)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        if (!page.page_type) {
+            return res.status(400).json({ error: 'Page not classified. Run classifier first.' })
+        }
+
+        // 2. Fetch schema config from schema_org table
+        const { data: schemaConfig, error: configError } = await supabase
+            .from('schema_org')
+            .select('*')
+            .eq('page_type', page.page_type)
+            .single()
+
+        if (configError || !schemaConfig) {
+            return res.status(400).json({ error: `No schema config found for page type: ${page.page_type}` })
+        }
+
+        // Check tier
+        if (schemaConfig.tier === 'LOW') {
+            await supabase
+                .from('page_index')
+                .update({
+                    schema_status: 'skipped',
+                    schema_errors: [{ type: 'skipped', message: schemaConfig.reason || 'LOW tier' }],
+                    schema_generated_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            return res.json({
+                success: true,
+                skipped: true,
+                reason: `LOW tier - ${schemaConfig.reason || 'Not prioritized'}`,
+                pageType: page.page_type
+            })
+        }
+
+        if (schemaConfig.tier === 'MEDIUM' && !includeMedium) {
+            await supabase
+                .from('page_index')
+                .update({
+                    schema_status: 'skipped',
+                    schema_errors: [{ type: 'skipped', message: 'MEDIUM tier - use includeMedium to generate' }],
+                    schema_generated_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            return res.json({
+                success: true,
+                skipped: true,
+                reason: 'MEDIUM tier - enable includeMedium to generate',
+                pageType: page.page_type
+            })
+        }
+
+        // 3. Fetch site data for provider info
+        const { data: site } = await supabase
+            .from('site_index')
+            .select('url, site_profile, account_id')
+            .eq('id', page.site_id)
+            .single()
+
+        const siteUrl = site?.url || ''
+        const siteProfile = site?.site_profile || {}
+        const pageUrl = page.url || `${siteUrl}${page.path}`
+
+        // 4. Fetch templates for the linked schemas
+        const linkedSchemas = schemaConfig.linked_schemas || []
+        const allSchemaTypes = [schemaConfig.schema_type, ...linkedSchemas]
+
+        const { data: templates } = await supabase
+            .from('schema_templates')
+            .select('*')
+            .in('schema_type', allSchemaTypes)
+
+        const templateMap = {}
+        templates?.forEach(t => {
+            templateMap[t.schema_type] = t
+        })
+
+        // 5. Fetch the generation prompt
+        const { data: promptData } = await supabase
+            .from('prompts')
+            .select('system_prompt, user_prompt_template, default_model')
+            .eq('name', 'Schema: Full JSON-LD Generation')
+            .single()
+
+        // Prepare content preview (first 2000 chars of main content)
+        const contentPreview = (page.main_content || page.html_content || '').substring(0, 2000)
+
+        // 6. Build the prompt
+        const systemPrompt = promptData?.system_prompt || `You are an expert at generating JSON-LD schema markup for healthcare/medical websites. 
+Generate valid schema.org JSON-LD that enhances search visibility.
+Always use @graph format. Use @id references to link entities.
+Return ONLY valid JSON, no markdown.`
+
+        const userPrompt = `Generate JSON-LD schema markup for this page.
+
+PAGE TYPE: ${page.page_type}
+PAGE URL: ${pageUrl}
+SITE URL: ${siteUrl}
+
+PAGE DATA:
+Title: ${page.title || 'N/A'}
+Description: ${page.meta_tags?.description || 'N/A'}
+Content Preview: ${contentPreview}
+
+SITE PROFILE:
+Business Name: ${siteProfile?.business_name || 'Unknown'}
+Phone: ${siteProfile?.phone || 'N/A'}
+Business Type: ${siteProfile?.business_type || 'MedicalBusiness'}
+Address: ${JSON.stringify(siteProfile?.address || {}, null, 2)}
+
+PRIMARY SCHEMA: ${schemaConfig.schema_type}
+LINKED SCHEMAS TO INCLUDE: ${linkedSchemas.join(', ') || 'None'}
+
+TEMPLATES AVAILABLE:
+${allSchemaTypes.map(type => {
+            const t = templateMap[type]
+            if (!t) return `- ${type}: (no template)`
+            return `- ${type}:
+  Base fields: ${JSON.stringify(t.base_fields)}
+  Required: ${t.required_fields?.join(', ') || 'none'}
+  Nesting: ${JSON.stringify(t.nesting_rules || {})}`
+        }).join('\n')}
+
+Generate a complete @graph array with all schemas properly nested. Include:
+1. The primary ${schemaConfig.schema_type} schema with all applicable fields
+2. Any linked schemas (${linkedSchemas.join(', ') || 'none'})
+3. Proper @id references for linking
+4. Nested structures (e.g., provider inside MedicalProcedure)
+
+Return ONLY valid JSON with this structure:
+{
+  "@context": "https://schema.org",
+  "@graph": [...]
+}`
+
+        // 7. Call LLM
+        let totalInputTokens = 0
+        let totalOutputTokens = 0
+        let generatedSchema = null
+        const model = promptData?.default_model || 'gpt-4o-mini'
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                response_format: { type: 'json_object' },
+                temperature: 0.3
+            })
+
+            totalInputTokens = completion.usage?.prompt_tokens || 0
+            totalOutputTokens = completion.usage?.completion_tokens || 0
+
+            const content = completion.choices[0]?.message?.content
+            if (content) {
+                generatedSchema = JSON.parse(content)
+            }
+        } catch (llmError) {
+            console.error('LLM error in schema generation:', llmError.message)
+            return res.status(500).json({
+                error: 'LLM generation failed',
+                details: llmError.message
+            })
+        }
+
+        // Validate the schema structure
+        if (!generatedSchema || !generatedSchema['@graph']) {
+            return res.status(500).json({
+                error: 'Invalid schema structure - missing @graph',
+                generated: generatedSchema
+            })
+        }
+
+        // 8. Save to database
+        const requestDurationMs = Date.now() - startTime
+
+        const { error: updateError } = await supabase
+            .from('page_index')
+            .update({
+                recommended_schema: generatedSchema,
+                schema_status: 'validated',
+                schema_errors: null,
+                schema_generated_at: new Date().toISOString()
+            })
+            .eq('id', pageId)
+
+        if (updateError) {
+            return res.status(500).json({ error: `Failed to save schema: ${updateError.message}` })
+        }
+
+        // Log AI usage
+        await logAIUsage({
+            action: 'generate_schema_v2',
+            pageId,
+            pageUrl,
+            provider: 'openai',
+            model: model,
+            inputTokens: totalInputTokens,
+            outputTokens: totalOutputTokens,
+            requestDurationMs,
+            success: true
+        })
+
+        res.json({
+            success: true,
+            skipped: false,
+            schema: generatedSchema,
+            pageType: page.page_type,
+            schemaType: schemaConfig.schema_type,
+            linkedSchemas: linkedSchemas,
+            tokens: { input: totalInputTokens, output: totalOutputTokens },
+            model: model,
+            durationMs: requestDurationMs,
+            message: 'Schema generated with v2 template-based system'
+        })
+
+    } catch (error) {
+        console.error('Generate schema v2 error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ============================================
 // Link Plan API Endpoints
 // ============================================
 
