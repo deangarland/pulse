@@ -203,7 +203,12 @@ class UrlQueue {
             const parsed = new URL(url, this.baseUrl.origin)
             parsed.hash = ''
             parsed.searchParams.sort()
-            return parsed.href
+            // Remove trailing slash for consistency (except for root)
+            let normalized = parsed.href
+            if (normalized.endsWith('/') && parsed.pathname !== '/') {
+                normalized = normalized.slice(0, -1)
+            }
+            return normalized
         } catch {
             return null
         }
@@ -308,11 +313,17 @@ async function updatePagesCount(siteId, count) {
 }
 
 async function savePage(siteId, url, data) {
-    const path = new URL(url).pathname + new URL(url).search
+    // Normalize URL: remove trailing slash (except root) for consistent upsert
+    let normalizedUrl = url
+    const parsed = new URL(url)
+    if (normalizedUrl.endsWith('/') && parsed.pathname !== '/') {
+        normalizedUrl = normalizedUrl.slice(0, -1)
+    }
+    const path = parsed.pathname.replace(/\/$/, '') || '/'
 
     const pageData = {
         site_id: siteId,
-        url,
+        url: normalizedUrl,
         path,
         title: data.title,
         status_code: data.statusCode,
