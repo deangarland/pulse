@@ -57,46 +57,67 @@ const VALID_PAGE_TYPES = [
 ];
 
 // ============================================================
-// SCHEMA VALUE TIERS
+// SCHEMA VALUE TIERS (now loaded from database)
 // ============================================================
-// HIGH: Auto-generate schemas (core SEO value)
-// MEDIUM: Generate only when explicitly requested (--include-medium flag)
-// LOW: Never generate (no SEO value or manual handling required)
-//
-// Tier assignments based on:
-// - Rich result potential in Google Search
-// - E-E-A-T signals and trust value
-// - Conversion/business impact
+// Tier data is stored in schema_templates table with:
+// - tier: HIGH/MEDIUM/LOW
+// - tier_reason: explanation for the tier assignment
+// - page_type: maps page classifier type to schema type
 // ============================================================
 
-const SCHEMA_VALUE_TIERS = {
-    // HIGH VALUE - Auto-generate (core money pages, rich result potential)
-    PROCEDURE: { tier: 'HIGH', schema: 'MedicalProcedure', reason: 'Core service pages, procedure rich results, FAQs' },
-    RESOURCE: { tier: 'HIGH', schema: 'BlogPosting', reason: 'Article rich results, freshness signals, author credibility' },
-    TEAM_MEMBER: { tier: 'HIGH', schema: 'Person/Physician', reason: 'E-E-A-T signals, medical expertise, trust' },
-    GALLERY: { tier: 'HIGH', schema: 'ImageGallery', reason: 'Image search visibility, social proof' },
-    HOMEPAGE: { tier: 'HIGH', schema: 'LocalBusiness', reason: 'Foundation NAP schema, reviews, hours' },
-    CONTACT: { tier: 'HIGH', schema: 'ContactPage+NAP', reason: 'NAP consistency, contact information rich results' },
-    LOCATION: { tier: 'HIGH', schema: 'LocalBusiness', reason: 'Local SEO, NAP for each location, Google Business Profile alignment' },
+// Cache for tier data (loaded on first use)
+let _tierCache = null;
+let _tierCacheLoaded = false;
 
-    // MEDIUM VALUE - Generate on request only (some value, but not critical)
-    CONDITION: { tier: 'MEDIUM', schema: 'MedicalCondition', reason: 'Health queries, but limited Google rich result support' },
-    PRODUCT: { tier: 'MEDIUM', schema: 'Product', reason: 'E-commerce rich results, but complex pricing/availability' },
-    PRODUCT_COLLECTION: { tier: 'MEDIUM', schema: 'ItemList', reason: 'Collection pages, products have individual schema' },
+/**
+ * Load tier data from database into cache
+ */
+async function loadTierCache() {
+    if (_tierCacheLoaded) return _tierCache;
 
-    // LOW VALUE - Skip (no schema generation)
-    SERVICE_INDEX: { tier: 'LOW', schema: null, reason: 'Listing page, individual procedures have the value' },
-    BODY_AREA: { tier: 'LOW', schema: null, reason: 'Grouping page, link to procedures/conditions instead' },
-    RESOURCE_INDEX: { tier: 'LOW', schema: null, reason: 'Blog archive/tags, no unique content to schema' },
-    UTILITY: { tier: 'LOW', schema: null, reason: 'Cart, account, search - no content value' },
-    MEMBERSHIP: { tier: 'LOW', schema: null, reason: 'Pricing pages too variable for schema' },
-    ABOUT: { tier: 'LOW', schema: null, reason: 'AboutPage schema has minimal SEO value' },
-    GENERIC: { tier: 'LOW', schema: null, reason: 'Catch-all, no predictable schema type' }
-};
+    const { data, error } = await supabase
+        .from('schema_templates')
+        .select('schema_type, page_type, tier, tier_reason')
+        .not('page_type', 'is', null);
 
-// Get tier for a page type
-function getSchemaValueTier(pageType) {
-    return SCHEMA_VALUE_TIERS[pageType]?.tier || 'LOW';
+    if (error) {
+        console.error('Failed to load tier cache:', error.message);
+        _tierCache = {};
+    } else {
+        _tierCache = {};
+        data?.forEach(row => {
+            if (row.page_type) {
+                _tierCache[row.page_type] = {
+                    tier: row.tier || 'LOW',
+                    schema: row.schema_type,
+                    reason: row.tier_reason
+                };
+            }
+        });
+    }
+    _tierCacheLoaded = true;
+    return _tierCache;
+}
+
+/**
+ * Get tier for a page type (async - loads from DB on first call)
+ */
+async function getSchemaValueTier(pageType) {
+    const cache = await loadTierCache();
+    return cache[pageType]?.tier || 'LOW';
+}
+
+/**
+ * Get tier info for a page type (includes schema type and reason)
+ */
+async function getSchemaValueTierInfo(pageType) {
+    const cache = await loadTierCache();
+    return cache[pageType] || { tier: 'LOW', schema: null, reason: 'Unknown page type' };
+}
+
+// Legacy sync version for exports (uses cached data)
+function getSchemaValueTierSync(pageType) {
+    return _tierCache?.[pageType]?.tier || 'LOW';
 }
 
 /**
@@ -936,7 +957,7 @@ async function generateSchemaForPage(page, siteProfile, siteUrl) {
         case 'UTILITY':
         case 'MEMBERSHIP':
         case 'ABOUT':
-            return { schemas: [], pageType, skip: true, reason: `LOW tier - ${SCHEMA_VALUE_TIERS[pageType]?.reason || 'no schema needed'}` };
+            return { schemas: [], pageType, skip: true, reason: `LOW tier - ${_tierCache?.[pageType]?.reason || 'no schema needed'}` };
 
         case 'GENERIC':
         default:
@@ -1219,7 +1240,8 @@ export {
     generateLocalBusinessSchema,
     generateOrganizationSchema,
     getSchemaValueTier,
-    SCHEMA_VALUE_TIERS,
+    getSchemaValueTierInfo,
+    loadTierCache,
     VALID_PAGE_TYPES
 };
 
