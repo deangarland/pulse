@@ -128,30 +128,58 @@ function SchemaEditModal({
                         />
                     </div>
 
-                    {/* Required Fields (read-only) */}
-                    <div className="space-y-2">
-                        <Label>Required Fields</Label>
-                        <div className="flex flex-wrap gap-1 p-2 border rounded-md bg-muted/30 min-h-[40px]">
-                            {(template.required_fields?.length || 0) === 0 ? (
-                                <span className="text-sm text-muted-foreground">None specified</span>
-                            ) : (
-                                template.required_fields?.map((f: string) => (
-                                    <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Data Sources (read-only preview) */}
+                    {/* Schema Fields with descriptions */}
                     {template.data_sources && Object.keys(template.data_sources).length > 0 && (
                         <div className="space-y-2">
-                            <Label>Data Sources</Label>
-                            <div className="p-2 border rounded-md bg-muted/30 text-xs font-mono max-h-32 overflow-auto">
-                                {Object.keys(template.data_sources).map(key => (
-                                    <div key={key} className="text-muted-foreground">
-                                        {key} → {JSON.stringify((template.data_sources as Record<string, unknown>)[key])}
-                                    </div>
-                                ))}
+                            <Label>Schema Fields</Label>
+                            <div className="border rounded-md overflow-hidden">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-muted/50">
+                                        <tr>
+                                            <th className="text-left px-3 py-2 font-medium">Field</th>
+                                            <th className="text-left px-3 py-2 font-medium">Source</th>
+                                            <th className="text-left px-3 py-2 font-medium">Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {Object.entries(template.data_sources as Record<string, {
+                                            source?: string;
+                                            required?: boolean;
+                                            description?: string;
+                                            table?: string;
+                                            column?: string;
+                                        }>).map(([field, config]) => (
+                                            <tr key={field} className="hover:bg-muted/30">
+                                                <td className="px-3 py-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <code className="text-xs bg-muted px-1 rounded">{field}</code>
+                                                        {config.required && (
+                                                            <Badge variant="destructive" className="text-[10px] px-1 py-0">req</Badge>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={`text-[10px] ${config.source === 'llm' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                                                                config.source === 'site' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                                                    config.source === 'location' ? 'bg-green-50 border-green-200 text-green-700' :
+                                                                        'bg-gray-50 border-gray-200 text-gray-700'
+                                                            }`}
+                                                    >
+                                                        {config.source === 'llm' ? '🤖 AI Extract' :
+                                                            config.source === 'site' ? '🏢 Site Profile' :
+                                                                config.source === 'location' ? '📍 Location' :
+                                                                    config.source === 'page' ? '📄 Page' : config.source}
+                                                    </Badge>
+                                                </td>
+                                                <td className="px-3 py-2 text-muted-foreground text-xs">
+                                                    {config.description || '—'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     )}
