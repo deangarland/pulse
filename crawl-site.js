@@ -329,8 +329,9 @@ async function savePage(siteId, url, data) {
         status_code: data.statusCode,
         html_content: data.html,
         cleaned_html: data.cleanedHtml,
+        main_content: data.main_content || null,
         headings: data.headings || null,
-        meta_tags: data.meta_tags || null,
+        meta_tags: { description: data.meta_description } || null,
         links_internal: data.internal_links || null,
         links_external: data.external_links || null,
         crawled_at: new Date().toISOString()
