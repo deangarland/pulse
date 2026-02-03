@@ -407,7 +407,7 @@ export default function MetaSchema() {
             const { data, error } = await supabase
                 .from('prompts')
                 .select('default_model')
-                .eq('name', 'Meta & Schema Recommendations')
+                .eq('name', 'Meta Recommendations')
                 .single()
             if (error) return { default_model: 'gpt-4o' }
             return data
