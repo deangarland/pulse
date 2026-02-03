@@ -162,10 +162,10 @@ function parsePage(html, baseUrl) {
         }
     })
 
-    // Main content (simplified extraction)
+    // Main content (full text extraction)
     $('script, style, nav, header, footer, aside, noscript, iframe, form').remove()
     const mainContent = $('main, article, [role="main"], .content, #content, body')
-        .first().text().replace(/\s+/g, ' ').trim().slice(0, 5000)
+        .first().text().replace(/\s+/g, ' ').trim()
 
     return {
         title,
