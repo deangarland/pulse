@@ -466,6 +466,13 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
         await updateSiteStatus(siteId, 'classifying')
         await runClassifier(siteId)
 
+        // Sync final page count from actual database count
+        const { count } = await getSupabase()
+            .from('page_index')
+            .select('*', { count: 'exact', head: true })
+            .eq('site_id', siteId)
+        await updatePagesCount(siteId, count || pagesProcessed)
+
         // Mark complete
         await updateSiteStatus(siteId, 'complete')
         console.log(`\n🎉 Site ${siteId} fully processed!`)
