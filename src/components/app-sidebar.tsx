@@ -20,7 +20,9 @@ import {
     MessageSquare,
     Tags,
     DollarSign,
-    X
+    X,
+    Building2,
+    Braces
 } from "lucide-react"
 import {
     Sidebar,
@@ -90,6 +92,8 @@ const adminItems = [
     { title: "Prompts", url: "/admin/prompts", icon: MessageSquare },
     { title: "Token Usage", url: "/admin/tokens", icon: DollarSign },
     { title: "Taxonomy", url: "/admin/taxonomy", icon: Tags },
+    { title: "Schema", url: "/admin/schema", icon: Braces },
+    { title: "Accounts", url: "/admin/accounts", icon: Building2 },
 ]
 
 export function AppSidebar() {

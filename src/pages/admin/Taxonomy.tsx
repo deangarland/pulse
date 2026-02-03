@@ -4,37 +4,11 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { DataTable, type ColumnDef } from "@/components/DataTable"
-import { LocationsTable } from "@/components/LocationsTable"
 import { toast } from "sonner"
-import { Trash2, Star } from "lucide-react"
+import { Trash2 } from "lucide-react"
 
 // Table configurations
 const TABLE_CONFIGS: Record<string, { columns: ColumnDef[], orderBy: string }> = {
-    locations_procedures: {
-        orderBy: 'location_name',
-        columns: [
-            { key: 'location_name', label: 'Location', defaultVisible: true, defaultWidth: 200 },
-            { key: 'city', label: 'City', defaultVisible: true, defaultWidth: 120 },
-            { key: 'state', label: 'State', defaultVisible: true, defaultWidth: 80 },
-            { key: 'phone_number', label: 'Phone', defaultVisible: true, defaultWidth: 130 },
-            {
-                key: 'page_id',
-                label: 'Linked Page',
-                defaultVisible: true,
-                defaultWidth: 180,
-                render: (v) => v ? <span className="text-xs text-muted-foreground truncate">{v.substring(0, 8)}...</span> : <span className="text-xs text-orange-500">Not linked</span>
-            },
-            { key: 'street', label: 'Street', defaultVisible: false, defaultWidth: 200 },
-            { key: 'postal', label: 'Postal', defaultVisible: false, defaultWidth: 80 },
-            { key: 'url', label: 'URL', defaultVisible: false, defaultWidth: 200 },
-            { key: 'gbp_url', label: 'GBP URL', defaultVisible: false, defaultWidth: 200 },
-            { key: 'hours', label: 'Hours', defaultVisible: false, defaultWidth: 150 },
-            {
-                key: 'is_primary', label: 'Primary', defaultVisible: true, defaultWidth: 70,
-                render: (v) => v ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
-            },
-        ]
-    },
     procedures: {
         orderBy: 'procedure_name',
         columns: [
@@ -74,23 +48,6 @@ const TABLE_CONFIGS: Record<string, { columns: ColumnDef[], orderBy: string }> =
             { key: 'condition', label: 'Condition', defaultVisible: true, defaultWidth: 200 },
             { key: 'slug', label: 'Slug', defaultVisible: true, defaultWidth: 150 },
             { key: 'description', label: 'Description', defaultVisible: true, defaultWidth: 300 },
-        ]
-    },
-    schema_org: {
-        orderBy: 'page_type',
-        columns: [
-            { key: 'page_type', label: 'Page Type', defaultVisible: true, defaultWidth: 130 },
-            { key: 'schema_type', label: 'Schema Type', defaultVisible: true, defaultWidth: 150 },
-            { key: 'tier', label: 'Tier', defaultVisible: true, defaultWidth: 80 },
-            {
-                key: 'auto_generate', label: 'Auto', defaultVisible: true, defaultWidth: 60,
-                render: (v) => v ? <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> : null
-            },
-            { key: 'reason', label: 'Reason', defaultVisible: true, defaultWidth: 250 },
-            {
-                key: 'linked_schemas', label: 'Linked Schemas', defaultVisible: true, defaultWidth: 180,
-                render: (v) => Array.isArray(v) ? v.join(', ') : (v || '-')
-            },
         ]
     }
 }
@@ -163,26 +120,21 @@ export default function Taxonomy() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Taxonomy</h1>
                 <p className="text-muted-foreground">
-                    Manage locations, procedures, categories, and schema mappings
+                    Manage procedures, categories, body areas, and conditions
                 </p>
             </div>
 
             <Card>
-                <Tabs defaultValue="locations" className="w-full">
+                <Tabs defaultValue="procedures" className="w-full">
                     <CardHeader className="pb-0">
                         <TabsList className="flex-wrap h-auto gap-1">
-                            <TabsTrigger value="locations">Locations</TabsTrigger>
                             <TabsTrigger value="procedures">Procedures</TabsTrigger>
                             <TabsTrigger value="categories">Categories</TabsTrigger>
                             <TabsTrigger value="body_areas">Body Areas</TabsTrigger>
                             <TabsTrigger value="conditions">Conditions</TabsTrigger>
-                            <TabsTrigger value="schema_org">Schema.org</TabsTrigger>
                         </TabsList>
                     </CardHeader>
                     <CardContent className="pt-6">
-                        <TabsContent value="locations" className="mt-0">
-                            <LocationsTable />
-                        </TabsContent>
                         <TabsContent value="procedures" className="mt-0">
                             <TaxonomyTableWithCRUD tableName="procedures" />
                         </TabsContent>
@@ -195,12 +147,10 @@ export default function Taxonomy() {
                         <TabsContent value="conditions" className="mt-0">
                             <TaxonomyTableWithCRUD tableName="conditions" />
                         </TabsContent>
-                        <TabsContent value="schema_org" className="mt-0">
-                            <TaxonomyTableWithCRUD tableName="schema_org" />
-                        </TabsContent>
                     </CardContent>
                 </Tabs>
             </Card>
         </div>
     )
 }
+

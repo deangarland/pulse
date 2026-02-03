@@ -8,6 +8,8 @@ import PlaceholderView from "./pages/Placeholder"
 import Prompts from "./pages/admin/Prompts"
 import TokenCostLog from "./pages/admin/TokenCostLog"
 import Taxonomy from "./pages/admin/Taxonomy"
+import Schema from "./pages/admin/Schema"
+import Accounts from "./pages/admin/Accounts"
 import Users from "./pages/admin/Users"
 import Roles from "./pages/admin/Roles"
 import Login from "./pages/Login"
@@ -47,6 +49,8 @@ function App() {
           <Route path="/admin/prompts" element={<Prompts />} />
           <Route path="/admin/tokens" element={<TokenCostLog />} />
           <Route path="/admin/taxonomy" element={<Taxonomy />} />
+          <Route path="/admin/schema" element={<Schema />} />
+          <Route path="/admin/accounts" element={<Accounts />} />
           <Route path="/admin/users" element={<Users />} />
           <Route path="/admin/roles" element={<Roles />} />
 
