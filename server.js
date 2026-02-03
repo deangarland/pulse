@@ -907,6 +907,23 @@ app.post('/api/sites', async (req, res) => {
 app.get('/api/debug-db', async (req, res) => {
     try {
         const dbUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+        // Optional: Test Write
+        let writeResult = null;
+        if (req.query.action === 'test_write') {
+            const testDomain = `test-write-${Date.now()}.com`
+            const { data, error } = await supabase
+                .from('site_index')
+                .upsert({
+                    domain: testDomain,
+                    url: `https://${testDomain}`,
+                    crawl_status: 'pending'
+                })
+                .select()
+                .single()
+
+            writeResult = error ? { success: false, error: error.message } : { success: true, site: data }
+        }
+
         const { data: sites, error } = await supabase
             .from('site_index')
             .select('id, domain, created_at')
@@ -917,6 +934,7 @@ app.get('/api/debug-db', async (req, res) => {
             connected_url: dbUrl ? dbUrl.replace(/https:\/\/([^.]+)\..*/, 'https://$1.supabase.co') : 'MISSING',
             sites_found: sites?.length || 0,
             recent_sites: sites || [],
+            write_test: writeResult,
             error: error?.message || null,
             env_vars: {
                 HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
