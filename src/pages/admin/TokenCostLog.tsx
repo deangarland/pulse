@@ -93,7 +93,10 @@ export default function TokenCostLog() {
         if (!logs) return null
 
         const totalCost = logs.reduce((sum, log) => sum + log.total_cost_cents, 0)
-        const totalTokens = logs.reduce((sum, log) => sum + log.total_tokens, 0)
+        const totalInputCost = logs.reduce((sum, log) => sum + log.input_cost_cents, 0)
+        const totalOutputCost = logs.reduce((sum, log) => sum + log.output_cost_cents, 0)
+        const totalInputTokens = logs.reduce((sum, log) => sum + log.input_tokens, 0)
+        const totalOutputTokens = logs.reduce((sum, log) => sum + log.output_tokens, 0)
         const avgDuration = logs.filter(l => l.request_duration_ms).length > 0
             ? logs.reduce((sum, l) => sum + (l.request_duration_ms || 0), 0) / logs.filter(l => l.request_duration_ms).length
             : 0
@@ -101,13 +104,22 @@ export default function TokenCostLog() {
             ? (logs.filter(l => l.success).length / logs.length) * 100
             : 100
 
-        // Cost by provider
+        // Cost by provider with input/output breakdown
         const byProvider = logs.reduce((acc, log) => {
-            acc[log.provider] = (acc[log.provider] || 0) + log.total_cost_cents
+            if (!acc[log.provider]) {
+                acc[log.provider] = { input: 0, output: 0, total: 0 }
+            }
+            acc[log.provider].input += log.input_cost_cents
+            acc[log.provider].output += log.output_cost_cents
+            acc[log.provider].total += log.total_cost_cents
             return acc
-        }, {} as Record<string, number>)
+        }, {} as Record<string, { input: number; output: number; total: number }>)
 
-        return { totalCost, totalTokens, avgDuration, successRate, byProvider, count: logs.length }
+        return {
+            totalCost, totalInputCost, totalOutputCost,
+            totalInputTokens, totalOutputTokens,
+            avgDuration, successRate, byProvider, count: logs.length
+        }
     }, [logs])
 
     // Export to CSV
@@ -194,12 +206,36 @@ export default function TokenCostLog() {
 
             {/* Stats Cards */}
             {stats && (
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Input Tokens</CardDescription>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Zap className="h-4 w-4 text-blue-600" />
+                                {stats.totalInputTokens.toLocaleString()}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">{formatCost(stats.totalInputCost)}</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Output Tokens</CardDescription>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Zap className="h-4 w-4 text-yellow-600" />
+                                {stats.totalOutputTokens.toLocaleString()}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">{formatCost(stats.totalOutputCost)}</p>
+                        </CardContent>
+                    </Card>
                     <Card>
                         <CardHeader className="pb-2">
                             <CardDescription>Total Cost</CardDescription>
-                            <CardTitle className="text-2xl flex items-center gap-2">
-                                <DollarSign className="h-5 w-5 text-green-600" />
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <DollarSign className="h-4 w-4 text-green-600" />
                                 {formatCost(stats.totalCost)}
                             </CardTitle>
                         </CardHeader>
@@ -209,21 +245,9 @@ export default function TokenCostLog() {
                     </Card>
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardDescription>Total Tokens</CardDescription>
-                            <CardTitle className="text-2xl flex items-center gap-2">
-                                <Zap className="h-5 w-5 text-yellow-600" />
-                                {stats.totalTokens.toLocaleString()}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-xs text-muted-foreground">Input + Output</p>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardDescription>Avg Response Time</CardDescription>
-                            <CardTitle className="text-2xl flex items-center gap-2">
-                                <Clock className="h-5 w-5 text-blue-600" />
+                            <CardDescription>Avg Duration</CardDescription>
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-purple-600" />
                                 {formatDuration(stats.avgDuration)}
                             </CardTitle>
                         </CardHeader>
@@ -234,13 +258,13 @@ export default function TokenCostLog() {
                     <Card>
                         <CardHeader className="pb-2">
                             <CardDescription>Success Rate</CardDescription>
-                            <CardTitle className="text-2xl flex items-center gap-2">
-                                <TrendingUp className="h-5 w-5 text-emerald-600" />
+                            <CardTitle className="text-xl flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-emerald-600" />
                                 {stats.successRate.toFixed(1)}%
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <p className="text-xs text-muted-foreground">Successful requests</p>
+                            <p className="text-xs text-muted-foreground">Successful</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -253,13 +277,19 @@ export default function TokenCostLog() {
                         <CardTitle className="text-base">Cost by Provider</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex gap-6">
-                            {Object.entries(stats.byProvider).map(([provider, cost]) => (
-                                <div key={provider} className="flex items-center gap-2">
-                                    <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${providerColors[provider] || 'bg-gray-100'}`}>
-                                        {provider}
-                                    </span>
-                                    <span className="font-semibold">{formatCost(cost)}</span>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {Object.entries(stats.byProvider).map(([provider, costs]) => (
+                                <div key={provider} className="border rounded-lg p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${providerColors[provider] || 'bg-gray-100'}`}>
+                                            {provider}
+                                        </span>
+                                        <span className="font-semibold ml-auto">{formatCost(costs.total)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Input: {formatCost(costs.input)}</span>
+                                        <span>Output: {formatCost(costs.output)}</span>
+                                    </div>
                                 </div>
                             ))}
                         </div>
