@@ -42,9 +42,14 @@ interface Location {
     hours: string | null
     page_id: string | null
     is_primary: boolean
+    account_id?: string
 }
 
-export function LocationsTable() {
+interface LocationsTableProps {
+    accountId?: string // Optional - if provided, filters by this account
+}
+
+export function LocationsTable({ accountId }: LocationsTableProps) {
     const queryClient = useQueryClient()
 
     // Separate state for data and open - matches PageIndex pattern
@@ -56,14 +61,21 @@ export function LocationsTable() {
         setEditSheetOpen(true)
     }
 
-    // Fetch locations
+    // Fetch locations - filtered by account if provided
     const { data: locations = [], isLoading, refetch } = useQuery({
-        queryKey: ['taxonomy', 'locations_procedures'],
+        queryKey: ['taxonomy', 'locations_procedures', accountId || 'all'],
         queryFn: async () => {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('locations_procedures')
                 .select('*')
                 .order('location_name')
+
+            // Filter by account if provided
+            if (accountId) {
+                query = query.eq('account_id', accountId)
+            }
+
+            const { data, error } = await query
             if (error) throw error
             return (data || []) as Location[]
         }

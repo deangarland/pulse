@@ -326,7 +326,7 @@ export default function Accounts() {
                             <CardDescription>Manage business locations for this client</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <LocationsTable />
+                            <LocationsTable accountId={account?.id} />
                         </CardContent>
                     </Card>
                 </TabsContent>
