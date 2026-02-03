@@ -121,11 +121,26 @@ function parsePage(html, baseUrl) {
     // Canonical URL
     const canonicalUrl = $('link[rel="canonical"]').attr('href') || null
 
-    // H1
-    const h1 = $('h1').first().text().trim() || null
+    // Extract all headings
+    const h1 = []
+    const h2 = []
+    const h3 = []
+    $('h1').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text) h1.push(text)
+    })
+    $('h2').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text) h2.push(text)
+    })
+    $('h3').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text) h3.push(text)
+    })
 
-    // Extract internal links
+    // Extract internal and external links
     const internalLinks = []
+    const externalLinks = []
     $('a[href]').each((_, el) => {
         const href = $(el).attr('href')
         if (!href) return
@@ -135,10 +150,12 @@ function parsePage(html, baseUrl) {
 
         try {
             const resolved = new URL(href, base.origin)
-            if (resolved.hostname === base.hostname) {
-                // Remove fragment
-                resolved.hash = ''
+            // Remove fragment
+            resolved.hash = ''
+            if (resolved.hostname === base.hostname || resolved.hostname === base.hostname.replace(/^www\./, '') || base.hostname === resolved.hostname.replace(/^www\./, '')) {
                 internalLinks.push(resolved.href)
+            } else {
+                externalLinks.push(resolved.href)
             }
         } catch {
             // Invalid URL, skip
@@ -154,8 +171,9 @@ function parsePage(html, baseUrl) {
         title,
         meta_description: metaDesc,
         canonical_url: canonicalUrl,
-        h1,
+        headings: { h1, h2, h3 },
         internal_links: [...new Set(internalLinks)],
+        external_links: [...new Set(externalLinks)],
         main_content: mainContent
     }
 }
