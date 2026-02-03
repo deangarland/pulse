@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LocationsTable } from "@/components/LocationsTable"
+import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import { toast } from "sonner"
 import {
     Building2,
@@ -18,11 +19,12 @@ import {
     Globe,
     Image
 } from "lucide-react"
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 
 interface AccountSettings {
     id: string
     account_name: string
+    hs_account_id?: string
     provider_name?: string
     legal_name?: string
     default_phone?: string
@@ -34,34 +36,72 @@ interface AccountSettings {
 
 export default function Accounts() {
     const [searchParams] = useSearchParams()
-    const accountId = searchParams.get('cid')
+    const navigate = useNavigate()
+    const accountIdFromUrl = searchParams.get('cid')
+    const [selectedAccountId, setSelectedAccountId] = useState<string>(accountIdFromUrl || '')
     const queryClient = useQueryClient()
+
+    // Fetch all accounts for dropdown
+    const { data: accounts } = useQuery({
+        queryKey: ['accounts-list'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('accounts')
+                .select('id, account_name, hs_account_id')
+                .order('account_name')
+            if (error) throw error
+            return data
+        }
+    })
+
+    // Sync URL param with local state
+    useEffect(() => {
+        if (accountIdFromUrl && accountIdFromUrl !== selectedAccountId) {
+            setSelectedAccountId(accountIdFromUrl)
+        }
+    }, [accountIdFromUrl])
+
+    // Handle account selection
+    const handleAccountChange = (hsAccountId: string) => {
+        setSelectedAccountId(hsAccountId)
+        if (hsAccountId) {
+            navigate(`/admin/accounts?cid=${hsAccountId}`, { replace: true })
+        } else {
+            navigate('/admin/accounts', { replace: true })
+        }
+    }
+
+    // Account options for combobox
+    const accountOptions = (accounts || []).map(a => ({
+        value: a.hs_account_id || a.id,
+        label: a.account_name
+    }))
 
     // Fetch account details
     const { data: account } = useQuery({
-        queryKey: ['account', accountId],
+        queryKey: ['account', selectedAccountId],
         queryFn: async () => {
-            if (!accountId) return null
+            if (!selectedAccountId) return null
             const { data, error } = await supabase
                 .from('accounts')
                 .select('*')
-                .eq('hs_account_id', accountId)
+                .eq('hs_account_id', selectedAccountId)
                 .single()
             if (error) throw error
             return data as AccountSettings
         },
-        enabled: !!accountId
+        enabled: !!selectedAccountId
     })
 
     // Local form state
     const [formData, setFormData] = useState<Partial<AccountSettings>>({})
 
     // Update when account loads
-    useState(() => {
+    useEffect(() => {
         if (account) {
             setFormData(account)
         }
-    })
+    }, [account])
 
     // Save mutation
     const saveMutation = useMutation({
@@ -74,7 +114,7 @@ export default function Accounts() {
             if (error) throw error
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['account', accountId] })
+            queryClient.invalidateQueries({ queryKey: ['account', selectedAccountId] })
             toast.success('Account settings saved')
         },
         onError: (error: Error) => {
@@ -90,7 +130,7 @@ export default function Accounts() {
         saveMutation.mutate(formData)
     }
 
-    if (!accountId) {
+    if (!selectedAccountId) {
         return (
             <div className="space-y-6">
                 <div>
@@ -100,10 +140,19 @@ export default function Accounts() {
                     </p>
                 </div>
                 <Card>
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No client selected</p>
-                        <p className="text-sm">Use the client dropdown in the header to select a client</p>
+                    <CardHeader className="pb-4">
+                        <CardTitle className="text-base">Select Client</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <SearchableCombobox
+                            options={accountOptions}
+                            value={selectedAccountId}
+                            onValueChange={handleAccountChange}
+                            placeholder="Select a client..."
+                            searchPlaceholder="Search clients..."
+                            emptyText="No clients found."
+                            className="w-full max-w-md"
+                        />
                     </CardContent>
                 </Card>
             </div>
