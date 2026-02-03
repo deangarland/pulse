@@ -6,6 +6,7 @@ import MetaSchema from "./pages/seo/MetaSchema"
 import LinkPlan from "./pages/seo/LinkPlan"
 import PlaceholderView from "./pages/Placeholder"
 import Prompts from "./pages/admin/Prompts"
+import TokenCostLog from "./pages/admin/TokenCostLog"
 import Taxonomy from "./pages/admin/Taxonomy"
 import Users from "./pages/admin/Users"
 import Roles from "./pages/admin/Roles"
@@ -44,6 +45,7 @@ function App() {
 
           {/* Admin */}
           <Route path="/admin/prompts" element={<Prompts />} />
+          <Route path="/admin/tokens" element={<TokenCostLog />} />
           <Route path="/admin/taxonomy" element={<Taxonomy />} />
           <Route path="/admin/users" element={<Users />} />
           <Route path="/admin/roles" element={<Roles />} />

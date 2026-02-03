@@ -39,6 +39,77 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
 // Google Gemini client
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null
 
+// ============================================
+// AI Model Pricing (per 1M tokens, in cents)
+// ============================================
+const MODEL_PRICING = {
+    // OpenAI
+    'o3-mini': { input: 110, output: 440 },
+    'o1': { input: 1500, output: 6000 },
+    'o1-mini': { input: 300, output: 1200 },
+    'gpt-4.5-preview': { input: 250, output: 1000 },
+    'gpt-4o': { input: 250, output: 1000 },
+    'gpt-4o-mini': { input: 15, output: 60 },
+    'gpt-4-turbo': { input: 1000, output: 3000 },
+    'gpt-4-turbo-preview': { input: 1000, output: 3000 },
+    'gpt-4': { input: 3000, output: 6000 },
+    'gpt-3.5-turbo': { input: 50, output: 150 },
+    // Anthropic Claude 4.5
+    'claude-opus-4-5-20251101': { input: 500, output: 2500 },
+    'claude-sonnet-4-5-20250929': { input: 300, output: 1500 },
+    'claude-haiku-4-5-20251001': { input: 100, output: 500 },
+    // Google Gemini 2.5
+    'gemini-2.5-pro': { input: 125, output: 1000 },
+    'gemini-2.5-flash': { input: 15, output: 60 },
+    'gemini-2.5-flash-lite': { input: 7.5, output: 30 },
+}
+
+// Helper to calculate cost in cents
+function calculateCost(model, inputTokens, outputTokens) {
+    const pricing = MODEL_PRICING[model] || { input: 0, output: 0 }
+    // pricing is per 1M tokens, so divide by 1,000,000
+    const inputCostCents = Math.round((inputTokens / 1000000) * pricing.input * 100)  // Store as integer cents * 100 for precision
+    const outputCostCents = Math.round((outputTokens / 1000000) * pricing.output * 100)
+    return { inputCostCents, outputCostCents }
+}
+
+// Log AI usage to database
+async function logAIUsage({
+    action,
+    pageId = null,
+    pageUrl = null,
+    provider,
+    model,
+    inputTokens,
+    outputTokens,
+    requestDurationMs = null,
+    success = true,
+    errorMessage = null
+}) {
+    try {
+        const { inputCostCents, outputCostCents } = calculateCost(model, inputTokens, outputTokens)
+
+        await supabase.from('ai_usage_logs').insert({
+            action,
+            page_id: pageId,
+            page_url: pageUrl,
+            provider,
+            model,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            input_cost_cents: inputCostCents,
+            output_cost_cents: outputCostCents,
+            request_duration_ms: requestDurationMs,
+            success,
+            error_message: errorMessage
+        })
+
+        console.log(`📊 AI Usage: ${action} | ${model} | ${inputTokens}+${outputTokens} tokens | $${((inputCostCents + outputCostCents) / 100).toFixed(4)}`)
+    } catch (error) {
+        console.error('Failed to log AI usage:', error.message)
+    }
+}
+
 const DEFAULT_SYSTEM_PROMPT = `You are an expert SEO consultant specializing in healthcare and medical aesthetics websites. Your role is to analyze web pages and provide optimized meta tags and schema markup recommendations.
 
 For every recommendation, you MUST explain your reasoning - why you're making this specific change and what benefit it provides.
@@ -217,6 +288,11 @@ app.post('/api/generate-recommendations', async (req, res) => {
         const prompt = buildPrompt(page)
         let content
 
+        // Track timing and tokens
+        const startTime = Date.now()
+        let inputTokens = 0
+        let outputTokens = 0
+
         if (provider === 'openai') {
             const response = await openai.chat.completions.create({
                 model: selectedModel,
@@ -229,6 +305,9 @@ app.post('/api/generate-recommendations', async (req, res) => {
                 max_tokens: 4000
             })
             content = response.choices[0]?.message?.content
+            // Capture token usage
+            inputTokens = response.usage?.prompt_tokens || 0
+            outputTokens = response.usage?.completion_tokens || 0
 
         } else if (provider === 'anthropic') {
             const response = await anthropic.messages.create({
@@ -240,6 +319,9 @@ app.post('/api/generate-recommendations', async (req, res) => {
                 ]
             })
             content = response.content[0]?.text
+            // Capture token usage
+            inputTokens = response.usage?.input_tokens || 0
+            outputTokens = response.usage?.output_tokens || 0
 
         } else if (provider === 'gemini') {
             const geminiModel = genAI.getGenerativeModel({ model: selectedModel })
@@ -252,9 +334,28 @@ app.post('/api/generate-recommendations', async (req, res) => {
                 }
             })
             content = result.response.text()
+            // Capture token usage
+            const usageMetadata = result.response.usageMetadata
+            inputTokens = usageMetadata?.promptTokenCount || 0
+            outputTokens = usageMetadata?.candidatesTokenCount || 0
         }
 
+        const requestDurationMs = Date.now() - startTime
+
         if (!content) {
+            // Log failed attempt
+            await logAIUsage({
+                action: 'meta_schema_generation',
+                pageId,
+                pageUrl: page.url,
+                provider,
+                model: selectedModel,
+                inputTokens,
+                outputTokens,
+                requestDurationMs,
+                success: false,
+                errorMessage: `No response from ${provider}`
+            })
             return res.status(500).json({ error: `No response from ${provider}` })
         }
 
@@ -264,6 +365,19 @@ app.post('/api/generate-recommendations', async (req, res) => {
             jsonContent = jsonContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
         }
         const recommendations = JSON.parse(jsonContent)
+
+        // Log successful usage
+        await logAIUsage({
+            action: 'meta_schema_generation',
+            pageId,
+            pageUrl: page.url,
+            provider,
+            model: selectedModel,
+            inputTokens,
+            outputTokens,
+            requestDurationMs,
+            success: true
+        })
 
         // Save to database
         const { error: updateError } = await supabase
@@ -287,6 +401,7 @@ app.post('/api/generate-recommendations', async (req, res) => {
             recommendations,
             provider,
             model: selectedModel,
+            tokens: { input: inputTokens, output: outputTokens },
             message: 'Recommendations generated successfully'
         })
 

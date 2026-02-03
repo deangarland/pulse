@@ -16,7 +16,8 @@ import {
     Users,
     Shield,
     MessageSquare,
-    Tags
+    Tags,
+    DollarSign
 } from "lucide-react"
 import {
     Sidebar,
@@ -84,6 +85,7 @@ const items = [
             { title: "Users", url: "/admin/users", icon: Users },
             { title: "Roles", url: "/admin/roles", icon: Shield },
             { title: "Prompts", url: "/admin/prompts", icon: MessageSquare },
+            { title: "Token Usage", url: "/admin/tokens", icon: DollarSign },
             { title: "Taxonomy", url: "/admin/taxonomy", icon: Tags },
         ]
     }
