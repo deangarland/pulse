@@ -67,9 +67,11 @@ const MODEL_PRICING = {
 // Helper to calculate cost in cents
 function calculateCost(model, inputTokens, outputTokens) {
     const pricing = MODEL_PRICING[model] || { input: 0, output: 0 }
-    // pricing is per 1M tokens, so divide by 1,000,000
-    const inputCostCents = Math.round((inputTokens / 1000000) * pricing.input * 100)  // Store as integer cents * 100 for precision
-    const outputCostCents = Math.round((outputTokens / 1000000) * pricing.output * 100)
+    // pricing is in cents per 1M tokens
+    // Example: gpt-4o = 250 cents ($2.50) per 1M input tokens
+    // For 1000 tokens: (1000 / 1000000) * 250 = 0.25 cents
+    const inputCostCents = Math.round((inputTokens / 1000000) * pricing.input)
+    const outputCostCents = Math.round((outputTokens / 1000000) * pricing.output)
     return { inputCostCents, outputCostCents }
 }
 
