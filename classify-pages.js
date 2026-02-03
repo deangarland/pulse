@@ -178,8 +178,28 @@ function quickHeuristicClassify(path) {
     if (path === '/') return 'HOMEPAGE';
 
     // Universal utility pages (skip schema, but still indexed)
-    const utilitySignals = ['cart', 'checkout', 'account', 'login', 'signin', 'sign-in', 'register', 'signup', 'sign-up', 'search', 'wishlist', 'favorites'];
+    const utilitySignals = ['cart', 'checkout', 'account', 'login', 'signin', 'sign-in', 'register', 'signup', 'sign-up', 'search', 'wishlist', 'favorites', 'privacy', 'terms', 'policy'];
     if (utilitySignals.some(s => path.includes(s))) return 'UTILITY';
+
+    // Contact pages - obvious from URL
+    if (path.includes('contact') || path.includes('appointment') || path.includes('book-now') || path.includes('schedule')) return 'CONTACT';
+
+    // About/team pages
+    if (path === '/about' || path === '/about-us' || path === '/about/') return 'ABOUT';
+    if (path.includes('/team') || path.includes('/staff') || path.includes('/providers') || path.includes('/our-team')) return 'ABOUT';
+
+    // Gallery pages
+    if (path.includes('gallery') || path.includes('before-after') || path.includes('results') || path.includes('portfolio')) return 'GALLERY';
+
+    // Membership/pricing pages
+    if (path.includes('membership') || path.includes('pricing') || path.includes('specials') || path.includes('financing')) return 'MEMBERSHIP';
+
+    // Blog post patterns (question titles, listicles) - these are RESOURCES
+    const blogPatterns = ['/blog/', '/news/', '/article/', '/post/'];
+    if (blogPatterns.some(p => path.includes(p))) return 'RESOURCE';
+
+    // Blog index/archive patterns
+    if (path.includes('/category/') || path.includes('/tag/') || path.includes('/tagged/') || path.includes('/archive/')) return 'RESOURCE_INDEX';
 
     return null; // No quick classification, use LLM
 }

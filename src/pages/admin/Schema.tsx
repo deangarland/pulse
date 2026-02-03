@@ -216,7 +216,7 @@ function SchemaEditModal({
                                 <SelectTrigger className="flex-1">
                                     <SelectValue placeholder="Select schema to add..." />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="max-h-60 overflow-y-auto">
                                     {AVAILABLE_SCHEMAS
                                         .filter(s => !linkedSchemas.includes(s))
                                         .map(s => (
