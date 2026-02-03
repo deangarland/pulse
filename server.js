@@ -167,8 +167,8 @@ app.post('/api/generate-recommendations', async (req, res) => {
             'gpt-3.5-turbo'
         ]
         const ANTHROPIC_MODELS = [
-            'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
-            'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'
+            'claude-sonnet-4-5', 'claude-sonnet-4', 'claude-3-7-sonnet-latest',
+            'claude-opus-4', 'claude-haiku-4'
         ]
         const GEMINI_MODELS = [
             'gemini-2.5-pro-preview-05-06', 'gemini-2.5-flash-preview-05-20',

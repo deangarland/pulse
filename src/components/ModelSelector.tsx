@@ -31,12 +31,12 @@ export const AI_MODELS: Model[] = [
     // OpenAI - GPT-3.5
     { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', provider: 'openai', description: 'Fast & cheap' },
 
-    // Claude (Anthropic)
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', provider: 'claude', description: 'Best balance' },
-    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', provider: 'claude', description: 'Fast & cheap' },
-    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus', provider: 'claude', description: 'Most capable' },
-    { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet', provider: 'claude', description: 'Balanced' },
-    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku', provider: 'claude', description: 'Fastest' },
+    // Claude (Anthropic) - Updated Feb 2026
+    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', provider: 'claude', description: 'Latest & best' },
+    { value: 'claude-sonnet-4', label: 'Claude Sonnet 4', provider: 'claude', description: 'Fast & smart' },
+    { value: 'claude-opus-4', label: 'Claude Opus 4', provider: 'claude', description: 'Most capable' },
+    { value: 'claude-haiku-4', label: 'Claude Haiku 4', provider: 'claude', description: 'Fastest' },
+    { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet', provider: 'claude', description: 'Legacy' },
 
     // Gemini (Google)
     { value: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', provider: 'gemini', description: 'Best quality' },
