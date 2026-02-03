@@ -924,6 +924,16 @@ app.get('/api/debug-db', async (req, res) => {
             writeResult = error ? { success: false, error: error.message } : { success: true, site: data }
         }
 
+        // Optional: Find Site
+        let findResult = null;
+        if (req.query.action === 'find_site' && req.query.query) {
+            const { data, error } = await supabase
+                .from('site_index')
+                .select('*')
+                .ilike('domain', `%${req.query.query}%`)
+            findResult = { data, error: error?.message }
+        }
+
         const { data: sites, error } = await supabase
             .from('site_index')
             .select('id, domain, created_at')
@@ -935,6 +945,7 @@ app.get('/api/debug-db', async (req, res) => {
             sites_found: sites?.length || 0,
             recent_sites: sites || [],
             write_test: writeResult,
+            find_result: findResult,
             error: error?.message || null,
             env_vars: {
                 HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
