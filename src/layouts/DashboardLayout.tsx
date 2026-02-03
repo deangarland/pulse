@@ -14,12 +14,9 @@ export default function DashboardLayout() {
             <AppSidebar />
             <main className="flex-1 flex flex-col min-h-screen">
                 <header className="h-14 shrink-0 border-b bg-background">
-                    <div className="h-full flex items-center justify-between gap-2 px-4 lg:px-6">
-                        <div className="flex items-center gap-2">
-                            <SidebarTrigger className="-ml-1" />
-                            <Separator orientation="vertical" className="mr-2 h-4" />
-                            <h1 className="font-semibold text-sm">Platform Overview</h1>
-                        </div>
+                    <div className="h-full flex items-center gap-2 px-4 lg:px-6">
+                        <SidebarTrigger className="-ml-1" />
+                        <Separator orientation="vertical" className="mr-2 h-4" />
                         {!isAdminRoute && <CustomerSelector />}
                     </div>
                 </header>
