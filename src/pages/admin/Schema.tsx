@@ -75,17 +75,35 @@ function SchemaEditModal({
 }) {
     const [tier, setTier] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('LOW')
     const [tierReason, setTierReason] = useState('')
+    const [modifiedDataSources, setModifiedDataSources] = useState<Record<string, unknown> | null>(null)
 
     // Reset form when template changes
     useEffect(() => {
         if (template) {
             setTier(template.tier)
             setTierReason(template.tier_reason || '')
+            setModifiedDataSources(template.data_sources ? { ...template.data_sources } : null)
         }
     }, [template])
 
+    const toggleFieldRequired = (fieldName: string) => {
+        if (!modifiedDataSources) return
+        const fieldConfig = modifiedDataSources[fieldName] as Record<string, unknown>
+        setModifiedDataSources({
+            ...modifiedDataSources,
+            [fieldName]: {
+                ...fieldConfig,
+                required: !fieldConfig.required
+            }
+        })
+    }
+
     const handleSave = () => {
-        onSave({ tier, tier_reason: tierReason })
+        onSave({
+            tier,
+            tier_reason: tierReason,
+            data_sources: modifiedDataSources
+        })
         onOpenChange(false)
     }
 
@@ -129,20 +147,20 @@ function SchemaEditModal({
                     </div>
 
                     {/* Schema Fields with descriptions */}
-                    {template.data_sources && Object.keys(template.data_sources).length > 0 && (
+                    {modifiedDataSources && Object.keys(modifiedDataSources).length > 0 && (
                         <div className="space-y-2">
-                            <Label>Schema Fields</Label>
-                            <div className="border rounded-md overflow-hidden">
+                            <Label>Schema Fields <span className="text-xs text-muted-foreground font-normal">(click badge to toggle required)</span></Label>
+                            <div className="border rounded-md overflow-hidden max-h-64 overflow-y-auto">
                                 <table className="w-full text-sm">
-                                    <thead className="bg-muted/50">
+                                    <thead className="bg-muted/50 sticky top-0">
                                         <tr>
                                             <th className="text-left px-3 py-2 font-medium">Field</th>
+                                            <th className="text-left px-3 py-2 font-medium w-20">Required</th>
                                             <th className="text-left px-3 py-2 font-medium">Source</th>
-                                            <th className="text-left px-3 py-2 font-medium">Description</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y">
-                                        {Object.entries(template.data_sources as Record<string, {
+                                        {Object.entries(modifiedDataSources as Record<string, {
                                             source?: string;
                                             required?: boolean;
                                             description?: string;
@@ -151,12 +169,22 @@ function SchemaEditModal({
                                         }>).map(([field, config]) => (
                                             <tr key={field} className="hover:bg-muted/30">
                                                 <td className="px-3 py-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <code className="text-xs bg-muted px-1 rounded">{field}</code>
-                                                        {config.required && (
-                                                            <Badge variant="destructive" className="text-[10px] px-1 py-0">req</Badge>
-                                                        )}
+                                                    <div className="flex flex-col">
+                                                        <code className="text-xs bg-muted px-1 rounded w-fit">{field}</code>
+                                                        <span className="text-xs text-muted-foreground">{config.description?.slice(0, 50)}{(config.description?.length || 0) > 50 ? '...' : ''}</span>
                                                     </div>
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <button
+                                                        onClick={() => toggleFieldRequired(field)}
+                                                        className="transition-all"
+                                                    >
+                                                        {config.required ? (
+                                                            <Badge variant="destructive" className="text-[10px] px-2 py-0.5 cursor-pointer hover:bg-red-700">req</Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 cursor-pointer hover:bg-muted text-muted-foreground">opt</Badge>
+                                                        )}
+                                                    </button>
                                                 </td>
                                                 <td className="px-3 py-2">
                                                     <Badge
@@ -167,14 +195,11 @@ function SchemaEditModal({
                                                                     'bg-gray-50 border-gray-200 text-gray-700'
                                                             }`}
                                                     >
-                                                        {config.source === 'llm' ? '🤖 AI Extract' :
-                                                            config.source === 'site' ? '🏢 Site Profile' :
-                                                                config.source === 'location' ? '📍 Location' :
+                                                        {config.source === 'llm' ? '🤖 AI' :
+                                                            config.source === 'site' ? '🏢 Site' :
+                                                                config.source === 'location' ? '📍 Loc' :
                                                                     config.source === 'page' ? '📄 Page' : config.source}
                                                     </Badge>
-                                                </td>
-                                                <td className="px-3 py-2 text-muted-foreground text-xs">
-                                                    {config.description || '—'}
                                                 </td>
                                             </tr>
                                         ))}
