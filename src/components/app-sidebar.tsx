@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react"
 import {
     ChevronDown,
+    ChevronRight,
     BarChart3,
     Megaphone,
     Search,
@@ -17,7 +19,8 @@ import {
     Shield,
     MessageSquare,
     Tags,
-    DollarSign
+    DollarSign,
+    X
 } from "lucide-react"
 import {
     Sidebar,
@@ -42,8 +45,8 @@ import { Link, useLocation, useSearchParams } from "react-router-dom"
 import { useAuthStore } from "@/lib/auth-store"
 import { cn } from "@/lib/utils"
 
-// Menu items with icons for each item
-const items = [
+// Regular menu items (not Admin)
+const menuItems = [
     {
         title: "Dashboard",
         icon: Home,
@@ -77,18 +80,16 @@ const items = [
         items: [
             { title: "Dashboards", url: "/performance", icon: BarChart3 },
         ]
-    },
-    {
-        title: "Admin",
-        icon: Settings,
-        items: [
-            { title: "Users", url: "/admin/users", icon: Users },
-            { title: "Roles", url: "/admin/roles", icon: Shield },
-            { title: "Prompts", url: "/admin/prompts", icon: MessageSquare },
-            { title: "Token Usage", url: "/admin/tokens", icon: DollarSign },
-            { title: "Taxonomy", url: "/admin/taxonomy", icon: Tags },
-        ]
     }
+]
+
+// Admin items (rendered in slide-out panel)
+const adminItems = [
+    { title: "Users", url: "/admin/users", icon: Users },
+    { title: "Roles", url: "/admin/roles", icon: Shield },
+    { title: "Prompts", url: "/admin/prompts", icon: MessageSquare },
+    { title: "Token Usage", url: "/admin/tokens", icon: DollarSign },
+    { title: "Taxonomy", url: "/admin/taxonomy", icon: Tags },
 ]
 
 export function AppSidebar() {
@@ -96,77 +97,150 @@ export function AppSidebar() {
     const [searchParams] = useSearchParams()
     const { state } = useSidebar()
     const isCollapsed = state === "collapsed"
+    const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+
+    // Close admin panel when navigating away from admin routes
+    useEffect(() => {
+        if (!location.pathname.startsWith('/admin')) {
+            setAdminPanelOpen(false)
+        }
+    }, [location.pathname])
+
+    const handleAdminClick = () => {
+        setAdminPanelOpen(!adminPanelOpen)
+    }
+
+    const handleAdminLinkClick = () => {
+        setAdminPanelOpen(false)
+    }
 
     return (
-        <Sidebar collapsible="icon">
-            <SidebarHeader>
-                <div className={cn(
-                    "flex items-center py-3",
-                    isCollapsed ? "justify-center px-0" : "gap-3 px-3"
-                )}>
-                    <div className="h-7 w-7 min-w-7 shrink-0 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">P</div>
-                    {!isCollapsed && <span className="font-bold text-lg tracking-tight">Pulse</span>}
+        <div className="flex">
+            <Sidebar collapsible="icon">
+                <SidebarHeader>
+                    <div className={cn(
+                        "flex items-center py-3",
+                        isCollapsed ? "justify-center px-0" : "gap-3 px-3"
+                    )}>
+                        <div className="h-7 w-7 min-w-7 shrink-0 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">P</div>
+                        {!isCollapsed && <span className="font-bold text-lg tracking-tight">Pulse</span>}
+                    </div>
+                </SidebarHeader>
+                <SidebarContent>
+                    {menuItems.map((group) => (
+                        <Collapsible key={group.title} defaultOpen className="group/collapsible">
+                            <SidebarGroup>
+                                <SidebarGroupLabel asChild>
+                                    <CollapsibleTrigger>
+                                        <group.icon className="h-4 w-4 mr-2" />
+                                        {!isCollapsed && group.title}
+                                        {!isCollapsed && <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />}
+                                    </CollapsibleTrigger>
+                                </SidebarGroupLabel>
+                                <CollapsibleContent>
+                                    <SidebarGroupContent>
+                                        <SidebarMenu className={!isCollapsed ? "pl-4" : ""}>
+                                            {group.items.map((item) => (
+                                                <SidebarMenuItem key={item.title}>
+                                                    <SidebarMenuButton
+                                                        asChild
+                                                        isActive={location.pathname === item.url}
+                                                        tooltip={item.title}
+                                                    >
+                                                        <Link to={`${item.url}${searchParams.get('cid') ? `?cid=${searchParams.get('cid')}` : ''}`}>
+                                                            <item.icon className="h-4 w-4" />
+                                                            <span>{item.title}</span>
+                                                        </Link>
+                                                    </SidebarMenuButton>
+                                                </SidebarMenuItem>
+                                            ))}
+                                        </SidebarMenu>
+                                    </SidebarGroupContent>
+                                </CollapsibleContent>
+                            </SidebarGroup>
+                        </Collapsible>
+                    ))}
+
+                    {/* Admin - Click to toggle slide-out panel */}
+                    <SidebarGroup>
+                        <SidebarGroupLabel asChild>
+                            <button
+                                onClick={handleAdminClick}
+                                className="flex items-center w-full text-left hover:bg-accent rounded-md transition-colors"
+                            >
+                                <Settings className="h-4 w-4 mr-2" />
+                                {!isCollapsed && "Admin"}
+                                {!isCollapsed && (
+                                    <ChevronRight className={cn(
+                                        "ml-auto transition-transform",
+                                        adminPanelOpen && "rotate-180"
+                                    )} />
+                                )}
+                            </button>
+                        </SidebarGroupLabel>
+                    </SidebarGroup>
+                </SidebarContent>
+                <SidebarFooter>
+                    <div className="p-2 flex flex-col items-center gap-2">
+                        <SidebarMenuButton
+                            tooltip="Sign Out"
+                            className="w-full"
+                            onClick={() => useAuthStore.getState().signOut()}
+                        >
+                            <LogOut className="h-4 w-4" />
+                            <span>Sign Out</span>
+                        </SidebarMenuButton>
+                        {!isCollapsed && (
+                            <>
+                                <img
+                                    src="/dean-garland-logo.png"
+                                    alt="Dean Garland"
+                                    className="h-8 opacity-60"
+                                />
+                                <span className="text-xs text-muted-foreground">v1.0.0</span>
+                            </>
+                        )}
+                    </div>
+                </SidebarFooter>
+                <SidebarRail />
+            </Sidebar>
+
+            {/* Admin Slide-Out Panel */}
+            <div className={cn(
+                "fixed top-0 h-full bg-sidebar border-r border-border shadow-lg transition-all duration-200 ease-in-out z-40",
+                isCollapsed ? "left-[--sidebar-width-icon]" : "left-[--sidebar-width]",
+                adminPanelOpen ? "w-48 opacity-100" : "w-0 opacity-0 overflow-hidden"
+            )}>
+                <div className="flex flex-col h-full">
+                    <div className="flex items-center justify-between p-4 border-b">
+                        <span className="font-semibold text-sm">Admin</span>
+                        <button
+                            onClick={() => setAdminPanelOpen(false)}
+                            className="p-1 rounded hover:bg-accent"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                    <nav className="flex-1 p-2">
+                        {adminItems.map((item) => (
+                            <Link
+                                key={item.url}
+                                to={`${item.url}${searchParams.get('cid') ? `?cid=${searchParams.get('cid')}` : ''}`}
+                                onClick={handleAdminLinkClick}
+                                className={cn(
+                                    "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                                    location.pathname === item.url
+                                        ? "bg-accent text-accent-foreground font-medium"
+                                        : "hover:bg-accent/50"
+                                )}
+                            >
+                                <item.icon className="h-4 w-4" />
+                                {item.title}
+                            </Link>
+                        ))}
+                    </nav>
                 </div>
-            </SidebarHeader>
-            <SidebarContent>
-                {items.map((group) => (
-                    <Collapsible key={group.title} defaultOpen className="group/collapsible">
-                        <SidebarGroup>
-                            <SidebarGroupLabel asChild>
-                                <CollapsibleTrigger>
-                                    <group.icon className="h-4 w-4 mr-2" />
-                                    {!isCollapsed && group.title}
-                                    {!isCollapsed && <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />}
-                                </CollapsibleTrigger>
-                            </SidebarGroupLabel>
-                            <CollapsibleContent>
-                                <SidebarGroupContent>
-                                    <SidebarMenu className={!isCollapsed ? "pl-4" : ""}>
-                                        {group.items.map((item) => (
-                                            <SidebarMenuItem key={item.title}>
-                                                <SidebarMenuButton
-                                                    asChild
-                                                    isActive={location.pathname === item.url}
-                                                    tooltip={item.title}
-                                                >
-                                                    <Link to={`${item.url}${searchParams.get('cid') ? `?cid=${searchParams.get('cid')}` : ''}`}>
-                                                        <item.icon className="h-4 w-4" />
-                                                        <span>{item.title}</span>
-                                                    </Link>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        ))}
-                                    </SidebarMenu>
-                                </SidebarGroupContent>
-                            </CollapsibleContent>
-                        </SidebarGroup>
-                    </Collapsible>
-                ))}
-            </SidebarContent>
-            <SidebarFooter>
-                <div className="p-2 flex flex-col items-center gap-2">
-                    <SidebarMenuButton
-                        tooltip="Sign Out"
-                        className="w-full"
-                        onClick={() => useAuthStore.getState().signOut()}
-                    >
-                        <LogOut className="h-4 w-4" />
-                        <span>Sign Out</span>
-                    </SidebarMenuButton>
-                    {!isCollapsed && (
-                        <>
-                            <img
-                                src="/dean-garland-logo.png"
-                                alt="Dean Garland"
-                                className="h-8 opacity-60"
-                            />
-                            <span className="text-xs text-muted-foreground">v1.0.0</span>
-                        </>
-                    )}
-                </div>
-            </SidebarFooter>
-            <SidebarRail />
-        </Sidebar>
+            </div>
+        </div>
     )
 }
-
