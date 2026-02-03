@@ -4,6 +4,9 @@
  * Classifies crawled pages into page types using LLM-based content analysis.
  * This is STEP 1 of the workflow - run BEFORE schema generation.
  * 
+ * Prompts are loaded from the database (Admin > Prompts) and costs are logged
+ * to ai_usage_logs for tracking in Token Cost Log.
+ * 
  * Usage:
  *   node classify-pages.js --site=ID           # Classify all unclassified pages for a site
  *   node classify-pages.js --site=ID --status  # Show classification progress
@@ -45,6 +48,92 @@ function getSupabase() {
         _supabase = createClient(supabaseUrl, supabaseKey);
     }
     return _supabase
+}
+
+// ============================================================
+// AI Model Pricing (per 1M tokens, in cents) - matches server.js
+// ============================================================
+const MODEL_PRICING = {
+    'gpt-4o-mini': { input: 15, output: 60 },
+    'gpt-4o': { input: 250, output: 1000 },
+    'gpt-4-turbo': { input: 1000, output: 3000 },
+    'gpt-3.5-turbo': { input: 50, output: 150 },
+}
+
+function calculateCost(model, inputTokens, outputTokens) {
+    const pricing = MODEL_PRICING[model] || { input: 15, output: 60 } // default to gpt-4o-mini pricing
+    const inputCostCents = Math.round((inputTokens / 1000000) * pricing.input)
+    const outputCostCents = Math.round((outputTokens / 1000000) * pricing.output)
+    return { inputCostCents, outputCostCents }
+}
+
+// Log AI usage to database
+async function logAIUsage({
+    action,
+    pageId = null,
+    pageUrl = null,
+    provider = 'openai',
+    model,
+    inputTokens,
+    outputTokens,
+    requestDurationMs = null,
+    success = true,
+    errorMessage = null
+}) {
+    try {
+        const { inputCostCents, outputCostCents } = calculateCost(model, inputTokens, outputTokens)
+
+        await getSupabase().from('ai_usage_logs').insert({
+            action,
+            page_id: pageId,
+            page_url: pageUrl,
+            provider,
+            model,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            input_cost_cents: inputCostCents,
+            output_cost_cents: outputCostCents,
+            request_duration_ms: requestDurationMs,
+            success,
+            error_message: errorMessage
+        })
+
+        console.log(`   📊 Logged: ${action} | ${model} | ${inputTokens}+${outputTokens} tokens`)
+    } catch (error) {
+        console.error('   ⚠️ Failed to log AI usage:', error.message)
+    }
+}
+
+// ============================================================
+// Prompt Fetching from Database
+// ============================================================
+
+// Cache for prompts (avoid repeated DB calls)
+const promptCache = {}
+
+async function getPrompt(promptName) {
+    if (promptCache[promptName]) {
+        return promptCache[promptName]
+    }
+
+    try {
+        const { data, error } = await getSupabase()
+            .from('prompts')
+            .select('system_prompt, user_prompt_template, default_model')
+            .eq('name', promptName)
+            .single()
+
+        if (error || !data) {
+            console.warn(`   ⚠️ Prompt "${promptName}" not found in DB, using fallback`)
+            return null
+        }
+
+        promptCache[promptName] = data
+        return data
+    } catch (err) {
+        console.error(`   ⚠️ Error fetching prompt: ${err.message}`)
+        return null
+    }
 }
 
 // Global state for execution
@@ -98,6 +187,42 @@ function quickHeuristicClassify(path) {
 // Global site context (populated by analyzeSiteStructure)
 let siteContext = null;
 
+// Fallback prompts if database prompts are not available
+const FALLBACK_SITE_ANALYSIS_PROMPT = `You are analyzing a medical/aesthetic practice website to understand its structure BEFORE classifying individual pages.
+
+Here is a summary of ALL {{page_count}} pages on this site (path | title | content snippet):
+
+{{page_summaries}}
+
+Analyze this site and identify:
+1. URL PATTERNS: Common path patterns and what they likely represent
+2. CONTENT PATTERNS: Which pages appear to be blog posts vs service pages
+3. LOCATION PATTERN: Does this site have location-specific pages?
+4. BLOG PATTERN: Where does the blog live? Which pages are blog articles?
+
+Return a JSON object:
+{
+  "patterns": [{"pattern": "/category/*", "likely_type": "RESOURCE_INDEX", "reason": "..."}],
+  "locations": ["City1", "City2"],
+  "blog_path": "/blog",
+  "notes": "Any observations"
+}`
+
+const FALLBACK_PAGE_TYPE_PROMPT = `{{site_context}}
+
+PAGE METADATA:
+URL Path: {{page_path}}
+Title: {{page_title}}
+Meta Description: {{meta_description}}
+Content Length: {{content_length}} characters
+
+PAGE HTML STRUCTURE:
+{{html_preview}}
+
+Classify this page. Valid types: HOMEPAGE, PROCEDURE, SERVICE_INDEX, BODY_AREA, CONDITION, RESOURCE, RESOURCE_INDEX, TEAM_MEMBER, ABOUT, GALLERY, CONTACT, LOCATION, PRODUCT, PRODUCT_COLLECTION, UTILITY, MEMBERSHIP, GENERIC.
+
+Respond with ONLY the page type (e.g., "PROCEDURE" or "RESOURCE"), nothing else.`
+
 /**
  * PASS 1: Analyze entire site structure before classifying individual pages
  * Identifies URL patterns, content distributions, and page groupings
@@ -111,43 +236,49 @@ async function analyzeSiteStructure(pages) {
         return `${p.path} | ${p.title?.substring(0, 40) || 'No title'} | ${content}...`;
     });
 
-    const prompt = `You are analyzing a medical/aesthetic practice website to understand its structure BEFORE classifying individual pages.
+    // Try to get prompt from database
+    const promptData = await getPrompt('Page Classifier - Site Analysis')
+    const model = promptData?.default_model || 'gpt-4o-mini'
 
-Here is a summary of ALL ${pages.length} pages on this site (path | title | content snippet):
+    let prompt
+    if (promptData?.system_prompt && promptData?.user_prompt_template) {
+        // Combine system prompt and user template
+        prompt = promptData.system_prompt + '\n\n' + promptData.user_prompt_template
+            .replace('{{page_count}}', pages.length.toString())
+            .replace('{{page_summaries}}', pageSummaries.join('\n'))
+    } else {
+        // Use fallback
+        prompt = FALLBACK_SITE_ANALYSIS_PROMPT
+            .replace('{{page_count}}', pages.length.toString())
+            .replace('{{page_summaries}}', pageSummaries.join('\n'))
+    }
 
-${pageSummaries.join('\n')}
-
-Analyze this site and identify:
-1. URL PATTERNS: Common path patterns and what they likely represent (e.g., "/category/*" = blog categories, "/*-in-{city}" = location-specific procedures)
-2. CONTENT PATTERNS: Which pages appear to be blog posts vs service pages vs category listings based on content
-3. LOCATION PATTERN: Does this site have location-specific pages (same content for different cities)?
-4. BLOG PATTERN: Where does the blog live? What do category/tag pages look like? Which pages are individual blog articles?
-
-Return a JSON object:
-{
-  "patterns": [
-    {"pattern": "/category/*", "likely_type": "RESOURCE_INDEX", "reason": "Blog category archives with article excerpts"},
-    {"pattern": "/*-in-orland-park", "likely_type": "PROCEDURE", "reason": "Location-specific treatment pages with detailed content"},
-    {"pattern": "/how-*, /can-*, /10-reasons-*", "likely_type": "RESOURCE", "reason": "Blog post titles starting with questions or listicles"}
-  ],
-  "locations": ["Frankfort", "Orland Park"],
-  "blog_path": "/blog",
-  "notes": "Any other observations about site structure"
-}`;
+    const startTime = Date.now()
 
     try {
         const response = await getOpenAI().chat.completions.create({
-            model: 'gpt-4o-mini',
+            model,
             messages: [{ role: 'user', content: prompt }],
             max_tokens: 800,
             temperature: 0,
             response_format: { type: 'json_object' }
         });
 
-        if (response.usage) {
-            totalTokensIn += response.usage.prompt_tokens || 0;
-            totalTokensOut += response.usage.completion_tokens || 0;
-        }
+        const inputTokens = response.usage?.prompt_tokens || 0
+        const outputTokens = response.usage?.completion_tokens || 0
+        totalTokensIn += inputTokens
+        totalTokensOut += outputTokens
+
+        // Log to ai_usage_logs
+        await logAIUsage({
+            action: 'page_classification_site_analysis',
+            provider: 'openai',
+            model,
+            inputTokens,
+            outputTokens,
+            requestDurationMs: Date.now() - startTime,
+            success: true
+        })
 
         const context = JSON.parse(response.choices[0].message.content);
         console.log(`   ✓ Identified ${context.patterns?.length || 0} URL patterns`);
@@ -177,15 +308,13 @@ async function llmClassifyPage(page) {
             `  - "${p.pattern}" → ${p.likely_type} (${p.reason})`
         ).join('\n') || '  (none identified)';
 
-        siteContextSection = `
-SITE CONTEXT (from site-wide analysis):
+        siteContextSection = `SITE CONTEXT (from site-wide analysis):
 URL Patterns identified on this site:
 ${patterns}
 Locations: ${siteContext.locations?.join(', ') || 'not detected'}
 ${siteContext.notes ? `Notes: ${siteContext.notes}` : ''}
 
-Use these patterns to help classify this page. If a URL matches a pattern, that's a strong hint.
-`;
+Use these patterns to help classify this page.`;
     }
 
     // Truncate cleaned HTML to reasonable size for LLM
@@ -193,62 +322,58 @@ Use these patterns to help classify this page. If a URL matches a pattern, that'
         ? cleanedHtml.substring(0, 12000) + '<!-- truncated -->'
         : cleanedHtml;
 
-    const content = `
-URL Path: ${page.path}
-Title: ${page.title || ''}
-Meta Description: ${page.meta_tags?.description || ''}
-Content Length: ${contentLength} characters
-    `.trim();
+    // Try to get prompt from database
+    const promptData = await getPrompt('Page Classifier - Page Type')
+    const model = promptData?.default_model || 'gpt-4o-mini'
 
-    const prompt = `You are classifying web pages for a medical/aesthetic practice website to determine which schema markup (JSON-LD structured data) to generate for SEO.
-${siteContextSection}
-IMPORTANT: Analyze the HTML structure to determine page type. Look for semantic elements like <article>, <time>, <nav>, author information, and page layout patterns.
+    let prompt
+    if (promptData?.system_prompt && promptData?.user_prompt_template) {
+        // Combine system prompt and user template with replacements
+        prompt = promptData.system_prompt + '\n\n' + promptData.user_prompt_template
+            .replace('{{site_context}}', siteContextSection)
+            .replace('{{page_path}}', page.path || '')
+            .replace('{{page_title}}', page.title || '')
+            .replace('{{meta_description}}', page.meta_tags?.description || '')
+            .replace('{{content_length}}', contentLength.toString())
+            .replace('{{html_preview}}', htmlPreview)
+    } else {
+        // Use fallback
+        prompt = FALLBACK_PAGE_TYPE_PROMPT
+            .replace('{{site_context}}', siteContextSection)
+            .replace('{{page_path}}', page.path || '')
+            .replace('{{page_title}}', page.title || '')
+            .replace('{{meta_description}}', page.meta_tags?.description || '')
+            .replace('{{content_length}}', contentLength.toString())
+            .replace('{{html_preview}}', htmlPreview)
+    }
 
-PAGE TYPES:
-
-CONTENT PAGES (the page IS the primary content):
-- PROCEDURE: A single treatment or service page with in-depth description of HOW a procedure is performed, what to expect, benefits, recovery, etc.
-- CONDITION: A page describing a medical/aesthetic problem or concern that treatments can solve.
-- BODY_AREA: A page focused on an anatomical region (e.g., "Face", "Nose", "Body").
-- RESOURCE: A single blog post, article, or news item. Look for <article>, <time> with publication date, author bylines, or typical blog post structure.
-- TEAM_MEMBER: Individual staff member profile (doctor bio, nurse bio - ONE person).
-- PRODUCT: E-commerce page for a single item for sale.
-
-INDEX/LISTING PAGES (the page LISTS or LINKS to other content):
-- SERVICE_INDEX: A navigation page listing multiple services. Minimal content, mostly links.
-- RESOURCE_INDEX: Blog archive, category, or tag page listing multiple articles. Look for repeating patterns of article excerpts/links.
-- PRODUCT_COLLECTION: E-commerce category listing multiple products.
-
-OTHER PAGE TYPES:
-- HOMEPAGE: The main landing page (root "/" URL only)
-- ABOUT: About page or team overview
-- GALLERY: Before/after photos, portfolio, image gallery
-- CONTACT: Contact information, appointment booking
-- LOCATION: City-specific landing page for local SEO
-- MEMBERSHIP: Membership, pricing, payment plans page
-- GENERIC: None of the above
-
-PAGE METADATA:
-${content}
-
-PAGE HTML STRUCTURE:
-${htmlPreview}
-
-Based on the HTML structure and metadata, respond with ONLY the page type (e.g., "PROCEDURE" or "RESOURCE"), nothing else.`;
+    const startTime = Date.now()
 
     try {
         const response = await getOpenAI().chat.completions.create({
-            model: 'gpt-4o-mini',
+            model,
             messages: [{ role: 'user', content: prompt }],
             max_tokens: 20,
             temperature: 0
         });
 
-        // Track token usage
-        if (response.usage) {
-            totalTokensIn += response.usage.prompt_tokens || 0;
-            totalTokensOut += response.usage.completion_tokens || 0;
-        }
+        const inputTokens = response.usage?.prompt_tokens || 0
+        const outputTokens = response.usage?.completion_tokens || 0
+        totalTokensIn += inputTokens
+        totalTokensOut += outputTokens
+
+        // Log to ai_usage_logs
+        await logAIUsage({
+            action: 'page_classification',
+            pageId: page.id,
+            pageUrl: page.url || page.path,
+            provider: 'openai',
+            model,
+            inputTokens,
+            outputTokens,
+            requestDurationMs: Date.now() - startTime,
+            success: true
+        })
 
         const result = response.choices[0].message.content.trim().toUpperCase();
         return VALID_PAGE_TYPES.includes(result) ? result : 'GENERIC';
@@ -279,7 +404,7 @@ async function classifyPageType(page) {
 async function getNextBatch() {
     let query = getSupabase()
         .from('page_index')
-        .select('id, path, title, meta_tags, main_content, cleaned_html')
+        .select('id, path, url, title, meta_tags, main_content, cleaned_html')
         .eq('site_id', SITE_ID)
         .order('path');
 
@@ -470,4 +595,3 @@ if (isMainModule) {
         });
     }
 }
-
