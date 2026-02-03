@@ -986,7 +986,7 @@ ${requirements}
 PAGE DATA:
 Title: ${page.title || 'N/A'}
 Meta Description: ${page.meta_tags?.description || 'N/A'}
-Headings: ${JSON.stringify(page.headings?.slice(0, 5) || [])}
+Headings: ${JSON.stringify(page.headings || {})}
 Content Preview:
 ${contentPreview}
 
