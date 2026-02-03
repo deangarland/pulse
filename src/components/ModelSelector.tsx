@@ -32,9 +32,9 @@ export const AI_MODELS: Model[] = [
     { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', provider: 'openai', description: 'Fast & cheap' },
 
     // Claude (Anthropic) - 4.5 series (Feb 2026)
-    { value: 'claude-opus-4-5', label: 'Claude 4.5 Opus', provider: 'claude', description: 'Peak intelligence' },
-    { value: 'claude-sonnet-4-5', label: 'Claude 4.5 Sonnet', provider: 'claude', description: 'Balanced, agents' },
-    { value: 'claude-haiku-4-5', label: 'Claude 4.5 Haiku', provider: 'claude', description: 'Fast & cheap' },
+    { value: 'claude-opus-4-5-20251101', label: 'Claude 4.5 Opus', provider: 'claude', description: 'Peak intelligence' },
+    { value: 'claude-sonnet-4-5-20250929', label: 'Claude 4.5 Sonnet', provider: 'claude', description: 'Balanced, agents' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude 4.5 Haiku', provider: 'claude', description: 'Fast & cheap' },
 
     // Gemini (Google) - 2.5 series (Feb 2026)
     { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', description: 'Best quality, reasoning' },
