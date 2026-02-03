@@ -206,7 +206,9 @@ class UrlQueue {
     isSameDomain(url) {
         try {
             const parsed = new URL(url)
-            return parsed.hostname === this.baseUrl.hostname
+            // Normalize by stripping www. prefix to handle redirects
+            const normalizeHost = (host) => host.replace(/^www\./, '')
+            return normalizeHost(parsed.hostname) === normalizeHost(this.baseUrl.hostname)
         } catch {
             return false
         }
