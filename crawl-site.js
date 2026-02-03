@@ -325,24 +325,22 @@ async function savePage(siteId, url, data) {
 // Classifier Integration
 // ============================================================
 
+// ============================================================
+// Classifier Integration
+// ============================================================
+
 function runClassifier(siteId) {
     return new Promise((resolve, reject) => {
         console.log(`\n🧠 Starting page classification...`)
 
-        const classifier = spawn('node', ['../classify-pages.js', `--site=${siteId}`], {
-            cwd: __dirname,
-            stdio: 'inherit'
-        })
-
-        classifier.on('close', (code) => {
-            if (code === 0) {
-                resolve()
-            } else {
-                reject(new Error(`Classifier exited with code ${code}`))
-            }
-        })
-
-        classifier.on('error', reject)
+        // Import dynamically to avoid circular dependencies
+        import('./classify-pages.js')
+            .then(({ runClassification }) => {
+                runClassification(siteId)
+                    .then(resolve)
+                    .catch(err => reject(new Error(`Classification failed: ${err.message}`)))
+            })
+            .catch(err => reject(new Error(`Failed to import classifier: ${err.message}`)))
     })
 }
 
