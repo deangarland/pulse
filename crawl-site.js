@@ -118,6 +118,9 @@ function parsePage(html, baseUrl) {
     // Meta description
     const metaDesc = $('meta[name="description"]').attr('content') || null
 
+    // Canonical URL
+    const canonicalUrl = $('link[rel="canonical"]').attr('href') || null
+
     // H1
     const h1 = $('h1').first().text().trim() || null
 
@@ -148,6 +151,7 @@ function parsePage(html, baseUrl) {
     return {
         title,
         meta_description: metaDesc,
+        canonical_url: canonicalUrl,
         h1,
         internal_links: [...new Set(internalLinks)],
         main_content: mainContent
@@ -410,6 +414,23 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
             // Parse page
             const parsed = parsePage(result.html, result.finalUrl)
             console.log(`   ✓ Title: ${parsed.title?.slice(0, 50) || '(none)'}...`)
+
+            // Check canonical - skip if it points elsewhere (e.g., paginated pages)
+            if (parsed.canonical_url) {
+                try {
+                    const canonical = new URL(parsed.canonical_url, result.finalUrl).href
+                    const current = result.finalUrl
+                    // Normalize by removing trailing slashes for comparison
+                    const normalizedCanonical = canonical.replace(/\/$/, '')
+                    const normalizedCurrent = current.replace(/\/$/, '')
+                    if (normalizedCanonical !== normalizedCurrent) {
+                        console.log(`   ⏭️ Skipped (canonical points to ${parsed.canonical_url})`)
+                        continue
+                    }
+                } catch {
+                    // Invalid canonical URL, proceed anyway
+                }
+            }
 
             // Clean HTML
             const cleanedHtml = cleanHtml(result.html)
