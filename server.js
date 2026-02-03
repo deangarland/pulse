@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateSchemaForPageById } from '../batch-generate-schemas.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -821,116 +822,74 @@ app.post('/api/generate-schema', async (req, res) => {
 // POST /api/generate-schema-v2 - Template-based schema generation with LLM
 // Uses schema_templates table and prompts for flexible schema generation
 // ============================================
+// ============================================
+// Schema Generator API (uses batch-generate-schemas.js as canonical source)
+// ============================================
 app.post('/api/generate-schema-v2', async (req, res) => {
     try {
-        const { pageId, includeMedium = false, useTemplates = true } = req.body
+        const { pageId, includeMedium = false } = req.body
 
         if (!pageId) {
             return res.status(400).json({ error: 'pageId is required' })
         }
 
-        const startTime = Date.now()
+        // Use the canonical schema generator
+        const result = await generateSchemaForPageById(pageId, { includeMedium })
 
-        // 1. Fetch page data
-        const { data: page, error: pageError } = await supabase
-            .from('page_index')
-            .select('id, site_id, path, url, title, meta_tags, headings, main_content, html_content, page_type')
-            .eq('id', pageId)
-            .single()
-
-        if (pageError || !page) {
-            return res.status(404).json({ error: 'Page not found' })
+        if (!result.success) {
+            return res.status(400).json({ error: result.error })
         }
 
-        if (!page.page_type) {
-            return res.status(400).json({ error: 'Page not classified. Run classifier first.' })
-        }
-
-        // 2. Fetch schema config from schema_org table
-        const { data: schemaConfig, error: configError } = await supabase
-            .from('schema_org')
-            .select('*')
-            .eq('page_type', page.page_type)
-            .single()
-
-        if (configError || !schemaConfig) {
-            return res.status(400).json({ error: `No schema config found for page type: ${page.page_type}` })
-        }
-
-        // Check tier
-        if (schemaConfig.tier === 'LOW') {
-            await supabase
-                .from('page_index')
-                .update({
-                    schema_status: 'skipped',
-                    schema_errors: [{ type: 'skipped', message: schemaConfig.reason || 'LOW tier' }],
-                    schema_generated_at: new Date().toISOString()
-                })
-                .eq('id', pageId)
-
+        if (result.skipped) {
             return res.json({
                 success: true,
                 skipped: true,
-                reason: `LOW tier - ${schemaConfig.reason || 'Not prioritized'}`,
-                pageType: page.page_type
+                reason: result.reason,
+                pageType: result.pageType
             })
         }
 
-        if (schemaConfig.tier === 'MEDIUM' && !includeMedium) {
-            await supabase
-                .from('page_index')
-                .update({
-                    schema_status: 'skipped',
-                    schema_errors: [{ type: 'skipped', message: 'MEDIUM tier - use includeMedium to generate' }],
-                    schema_generated_at: new Date().toISOString()
-                })
-                .eq('id', pageId)
-
-            return res.json({
-                success: true,
-                skipped: true,
-                reason: 'MEDIUM tier - enable includeMedium to generate',
-                pageType: page.page_type
-            })
-        }
-
-        // 3. Fetch site data for provider info
-        const { data: site } = await supabase
-            .from('site_index')
-            .select('url, site_profile, account_id')
-            .eq('id', page.site_id)
-            .single()
-
-        const siteUrl = site?.url || ''
-        const siteProfile = site?.site_profile || {}
-        const pageUrl = page.url || `${siteUrl}${page.path}`
-
-        // 4. Fetch templates for the linked schemas
-        const linkedSchemas = schemaConfig.linked_schemas || []
-        const allSchemaTypes = [schemaConfig.schema_type, ...linkedSchemas]
-
-        const { data: templates } = await supabase
-            .from('schema_templates')
-            .select('*')
-            .in('schema_type', allSchemaTypes)
-
-        const templateMap = {}
-        templates?.forEach(t => {
-            templateMap[t.schema_type] = t
+        res.json({
+            success: true,
+            skipped: false,
+            schema: result.schema,
+            pageType: result.pageType,
+            validation: result.validation
         })
 
-        // 5. Fetch the generation prompt
-        const { data: promptData } = await supabase
-            .from('prompts')
-            .select('system_prompt, default_model')
-            .eq('name', 'Schema: Full JSON-LD Generation')
-            .single()
+    } catch (error) {
+        console.error('Schema generation error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+const pageUrl = page.url || `${siteUrl}${page.path}`
 
-        // Prepare content preview (first 3000 chars of main content for better context)
-        const contentPreview = (page.main_content || page.html_content || '').substring(0, 3000)
+// 4. Fetch templates for the linked schemas
+const linkedSchemas = schemaConfig.linked_schemas || []
+const allSchemaTypes = [schemaConfig.schema_type, ...linkedSchemas]
 
-        // 6. Build the prompt with comprehensive skill rules
-        const systemPrompt = promptData?.system_prompt || `You are an expert at generating JSON-LD schema markup for healthcare/medical websites.
+const { data: templates } = await supabase
+    .from('schema_templates')
+    .select('*')
+    .in('schema_type', allSchemaTypes)
+
+const templateMap = {}
+templates?.forEach(t => {
+    templateMap[t.schema_type] = t
+})
+
+// 5. Fetch the generation prompt
+const { data: promptData } = await supabase
+    .from('prompts')
+    .select('system_prompt, default_model')
+    .eq('name', 'Schema: Full JSON-LD Generation')
+    .single()
+
+// Prepare content preview (first 3000 chars of main content for better context)
+const contentPreview = (page.main_content || page.html_content || '').substring(0, 3000)
+
+// 6. Build the prompt with comprehensive skill rules
+const systemPrompt = promptData?.system_prompt || `You are an expert at generating JSON-LD schema markup for healthcare/medical websites.
 
 CRITICAL RULES:
 1. LocalBusiness/Organization schema goes on HOMEPAGE ONLY - not on every page
@@ -951,24 +910,24 @@ VALIDATION REQUIREMENTS:
 
 Return ONLY valid JSON, no markdown or explanation.`
 
-        // Build page type specific requirements
-        const pageTypeRequirements = {
-            'HOMEPAGE': 'Required: LocalBusiness (with address, phone, hours, geo), Organization. Optional: WebSite with SearchAction, AggregateRating.',
-            'PROCEDURE': 'Required: MedicalProcedure (name, url, description, provider, bodyLocation, howPerformed). Optional: FAQPage if FAQ content exists. NO LocalBusiness on procedure pages.',
-            'TEAM_MEMBER': 'Required: Person or Physician (name, jobTitle, image, worksFor, knowsAbout, credentials). Board certifications go in memberOf.',
-            'RESOURCE': 'Required: BlogPosting or Article (headline, datePublished, author with full details, publisher).',
-            'GALLERY': 'Required: ImageGallery or CollectionPage (name, description). Optional: ImageObject for each image.',
-            'CONTACT': 'Required: ContactPage with mainEntity referencing Organization. Include BreadcrumbList.',
-            'LOCATION': 'Required: LocalBusiness for that specific location with full address, geo, and hours.',
-            'ABOUT': 'Required: AboutPage or ProfilePage. If showing multiple people, use Organization. If single person, use Person/Physician.',
-            'CONDITION': 'Required: MedicalCondition with name, description. Optional: FAQPage if content exists.',
-            'CATEGORY': 'Required: CollectionPage with ItemList of linked items.',
-            'GENERIC': 'Minimal schema - BreadcrumbList only unless page has specific rich content.'
-        }
+// Build page type specific requirements
+const pageTypeRequirements = {
+    'HOMEPAGE': 'Required: LocalBusiness (with address, phone, hours, geo), Organization. Optional: WebSite with SearchAction, AggregateRating.',
+    'PROCEDURE': 'Required: MedicalProcedure (name, url, description, provider, bodyLocation, howPerformed). Optional: FAQPage if FAQ content exists. NO LocalBusiness on procedure pages.',
+    'TEAM_MEMBER': 'Required: Person or Physician (name, jobTitle, image, worksFor, knowsAbout, credentials). Board certifications go in memberOf.',
+    'RESOURCE': 'Required: BlogPosting or Article (headline, datePublished, author with full details, publisher).',
+    'GALLERY': 'Required: ImageGallery or CollectionPage (name, description). Optional: ImageObject for each image.',
+    'CONTACT': 'Required: ContactPage with mainEntity referencing Organization. Include BreadcrumbList.',
+    'LOCATION': 'Required: LocalBusiness for that specific location with full address, geo, and hours.',
+    'ABOUT': 'Required: AboutPage or ProfilePage. If showing multiple people, use Organization. If single person, use Person/Physician.',
+    'CONDITION': 'Required: MedicalCondition with name, description. Optional: FAQPage if content exists.',
+    'CATEGORY': 'Required: CollectionPage with ItemList of linked items.',
+    'GENERIC': 'Minimal schema - BreadcrumbList only unless page has specific rich content.'
+}
 
-        const requirements = pageTypeRequirements[page.page_type] || pageTypeRequirements['GENERIC']
+const requirements = pageTypeRequirements[page.page_type] || pageTypeRequirements['GENERIC']
 
-        const userPrompt = `Generate JSON-LD schema markup for this ${page.page_type} page.
+const userPrompt = `Generate JSON-LD schema markup for this ${page.page_type} page.
 
 PAGE URL: ${pageUrl}
 SITE URL: ${siteUrl}
@@ -999,13 +958,13 @@ ADDITIONAL SCHEMAS TO INCLUDE: ${linkedSchemas.join(', ') || 'None'}
 
 TEMPLATE FIELD REFERENCE:
 ${allSchemaTypes.map(type => {
-            const t = templateMap[type]
-            if (!t) return `- ${type}: (no template available)`
-            return `- ${type}:
+    const t = templateMap[type]
+    if (!t) return `- ${type}: (no template available)`
+    return `- ${type}:
   Required fields: ${t.required_fields?.join(', ') || 'none'}
   Optional fields: ${t.optional_fields?.join(', ') || 'none'}
   Nesting rules: ${JSON.stringify(t.nesting_rules || {})}`
-        }).join('\n')}
+}).join('\n')}
 
 INSTRUCTIONS:
 1. Generate a complete @graph array based on the page type requirements above
@@ -1022,156 +981,156 @@ Return ONLY valid JSON:
   "@graph": [...]
 }`
 
-        // 7. Call LLM
-        let totalInputTokens = 0
-        let totalOutputTokens = 0
-        let generatedSchema = null
-        const model = promptData?.default_model || 'gpt-4o-mini'
+// 7. Call LLM
+let totalInputTokens = 0
+let totalOutputTokens = 0
+let generatedSchema = null
+const model = promptData?.default_model || 'gpt-4o-mini'
 
-        try {
-            const completion = await openai.chat.completions.create({
-                model: model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ],
-                response_format: { type: 'json_object' },
-                temperature: 0.3
-            })
+try {
+    const completion = await openai.chat.completions.create({
+        model: model,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+    })
 
-            totalInputTokens = completion.usage?.prompt_tokens || 0
-            totalOutputTokens = completion.usage?.completion_tokens || 0
+    totalInputTokens = completion.usage?.prompt_tokens || 0
+    totalOutputTokens = completion.usage?.completion_tokens || 0
 
-            const content = completion.choices[0]?.message?.content
-            if (content) {
-                generatedSchema = JSON.parse(content)
-            }
-        } catch (llmError) {
-            console.error('LLM error in schema generation:', llmError.message)
-            return res.status(500).json({
-                error: 'LLM generation failed',
-                details: llmError.message
-            })
+    const content = completion.choices[0]?.message?.content
+    if (content) {
+        generatedSchema = JSON.parse(content)
+    }
+} catch (llmError) {
+    console.error('LLM error in schema generation:', llmError.message)
+    return res.status(500).json({
+        error: 'LLM generation failed',
+        details: llmError.message
+    })
+}
+
+// Validate the schema structure
+if (!generatedSchema || !generatedSchema['@graph']) {
+    return res.status(500).json({
+        error: 'Invalid schema structure - missing @graph',
+        generated: generatedSchema
+    })
+}
+
+// 8. Validate schema based on skill rules
+const validationErrors = []
+const graph = generatedSchema['@graph'] || []
+
+// Check for placeholder text
+const jsonStr = JSON.stringify(generatedSchema)
+if (/\[EXTRACT|\[TODO|\[PHONE|\[ADDRESS|\[NAME/i.test(jsonStr)) {
+    validationErrors.push('Schema contains placeholder text - should be omitted or filled')
+}
+
+// Validate each schema in graph
+graph.forEach((schema, idx) => {
+    const schemaType = schema['@type']
+
+    // Check for empty strings
+    Object.entries(schema).forEach(([key, value]) => {
+        if (value === '' || value === 'N/A' || value === 'Unknown') {
+            validationErrors.push(`${schemaType}: Empty or placeholder value for '${key}'`)
         }
+    })
 
-        // Validate the schema structure
-        if (!generatedSchema || !generatedSchema['@graph']) {
-            return res.status(500).json({
-                error: 'Invalid schema structure - missing @graph',
-                generated: generatedSchema
-            })
-        }
-
-        // 8. Validate schema based on skill rules
-        const validationErrors = []
-        const graph = generatedSchema['@graph'] || []
-
-        // Check for placeholder text
-        const jsonStr = JSON.stringify(generatedSchema)
-        if (/\[EXTRACT|\[TODO|\[PHONE|\[ADDRESS|\[NAME/i.test(jsonStr)) {
-            validationErrors.push('Schema contains placeholder text - should be omitted or filled')
-        }
-
-        // Validate each schema in graph
-        graph.forEach((schema, idx) => {
-            const schemaType = schema['@type']
-
-            // Check for empty strings
-            Object.entries(schema).forEach(([key, value]) => {
-                if (value === '' || value === 'N/A' || value === 'Unknown') {
-                    validationErrors.push(`${schemaType}: Empty or placeholder value for '${key}'`)
-                }
-            })
-
-            // FAQ specific validation
-            if (schemaType === 'FAQPage' && schema.mainEntity) {
-                schema.mainEntity.forEach((q, i) => {
-                    const answerText = q.acceptedAnswer?.text || ''
-                    if (answerText.length < 50) {
-                        validationErrors.push(`FAQ answer ${i + 1} is too short (${answerText.length} chars, need 50+)`)
-                    }
-                })
-            }
-
-            // MedicalProcedure: check for required fields
-            if (schemaType === 'MedicalProcedure') {
-                if (!schema.name) validationErrors.push('MedicalProcedure: missing required field "name"')
-                if (!schema.url) validationErrors.push('MedicalProcedure: missing required field "url"')
-                if (!schema.description && !schema.howPerformed) {
-                    validationErrors.push('MedicalProcedure: should have description or howPerformed')
-                }
-            }
-
-            // LocalBusiness: check it's only on homepage
-            if ((schemaType === 'LocalBusiness' || schemaType.includes('Business')) && page.page_type !== 'HOMEPAGE' && page.page_type !== 'LOCATION' && page.page_type !== 'CONTACT') {
-                validationErrors.push(`LocalBusiness schema should only be on HOMEPAGE/LOCATION/CONTACT pages, not ${page.page_type}`)
-            }
-
-            // BlogPosting/Article: check required fields
-            if (schemaType === 'BlogPosting' || schemaType === 'Article') {
-                if (!schema.headline) validationErrors.push(`${schemaType}: missing required field "headline"`)
-                if (!schema.datePublished) validationErrors.push(`${schemaType}: missing required field "datePublished"`)
-                if (!schema.author) validationErrors.push(`${schemaType}: missing required field "author"`)
+    // FAQ specific validation
+    if (schemaType === 'FAQPage' && schema.mainEntity) {
+        schema.mainEntity.forEach((q, i) => {
+            const answerText = q.acceptedAnswer?.text || ''
+            if (answerText.length < 50) {
+                validationErrors.push(`FAQ answer ${i + 1} is too short (${answerText.length} chars, need 50+)`)
             }
         })
+    }
 
-        // Determine final status
-        const schemaStatus = validationErrors.length === 0 ? 'validated' : 'generated'
-
-        // 9. Save to database
-        const requestDurationMs = Date.now() - startTime
-
-        const { error: updateError } = await supabase
-            .from('page_index')
-            .update({
-                recommended_schema: generatedSchema,
-                schema_status: schemaStatus,
-                schema_errors: validationErrors.length > 0 ? validationErrors : null,
-                schema_generated_at: new Date().toISOString()
-            })
-            .eq('id', pageId)
-
-        if (updateError) {
-            return res.status(500).json({ error: `Failed to save schema: ${updateError.message}` })
+    // MedicalProcedure: check for required fields
+    if (schemaType === 'MedicalProcedure') {
+        if (!schema.name) validationErrors.push('MedicalProcedure: missing required field "name"')
+        if (!schema.url) validationErrors.push('MedicalProcedure: missing required field "url"')
+        if (!schema.description && !schema.howPerformed) {
+            validationErrors.push('MedicalProcedure: should have description or howPerformed')
         }
+    }
 
-        // Log AI usage
-        await logAIUsage({
-            action: 'generate_schema_v2',
-            pageId,
-            pageUrl,
-            provider: 'openai',
-            model: model,
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-            requestDurationMs,
-            success: true
-        })
+    // LocalBusiness: check it's only on homepage
+    if ((schemaType === 'LocalBusiness' || schemaType.includes('Business')) && page.page_type !== 'HOMEPAGE' && page.page_type !== 'LOCATION' && page.page_type !== 'CONTACT') {
+        validationErrors.push(`LocalBusiness schema should only be on HOMEPAGE/LOCATION/CONTACT pages, not ${page.page_type}`)
+    }
 
-        res.json({
-            success: true,
-            skipped: false,
-            schema: generatedSchema,
-            pageType: page.page_type,
-            schemaType: schemaConfig.schema_type,
-            linkedSchemas: linkedSchemas,
-            tokens: { input: totalInputTokens, output: totalOutputTokens },
-            model: model,
-            durationMs: requestDurationMs,
-            validation: {
-                status: schemaStatus,
-                errors: validationErrors.length > 0 ? validationErrors : null,
-                passedRules: validationErrors.length === 0
-            },
-            message: validationErrors.length === 0
-                ? 'Schema generated and validated successfully'
-                : `Schema generated with ${validationErrors.length} validation warning(s)`
-        })
+    // BlogPosting/Article: check required fields
+    if (schemaType === 'BlogPosting' || schemaType === 'Article') {
+        if (!schema.headline) validationErrors.push(`${schemaType}: missing required field "headline"`)
+        if (!schema.datePublished) validationErrors.push(`${schemaType}: missing required field "datePublished"`)
+        if (!schema.author) validationErrors.push(`${schemaType}: missing required field "author"`)
+    }
+})
+
+// Determine final status
+const schemaStatus = validationErrors.length === 0 ? 'validated' : 'generated'
+
+// 9. Save to database
+const requestDurationMs = Date.now() - startTime
+
+const { error: updateError } = await supabase
+    .from('page_index')
+    .update({
+        recommended_schema: generatedSchema,
+        schema_status: schemaStatus,
+        schema_errors: validationErrors.length > 0 ? validationErrors : null,
+        schema_generated_at: new Date().toISOString()
+    })
+    .eq('id', pageId)
+
+if (updateError) {
+    return res.status(500).json({ error: `Failed to save schema: ${updateError.message}` })
+}
+
+// Log AI usage
+await logAIUsage({
+    action: 'generate_schema_v2',
+    pageId,
+    pageUrl,
+    provider: 'openai',
+    model: model,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+    requestDurationMs,
+    success: true
+})
+
+res.json({
+    success: true,
+    skipped: false,
+    schema: generatedSchema,
+    pageType: page.page_type,
+    schemaType: schemaConfig.schema_type,
+    linkedSchemas: linkedSchemas,
+    tokens: { input: totalInputTokens, output: totalOutputTokens },
+    model: model,
+    durationMs: requestDurationMs,
+    validation: {
+        status: schemaStatus,
+        errors: validationErrors.length > 0 ? validationErrors : null,
+        passedRules: validationErrors.length === 0
+    },
+    message: validationErrors.length === 0
+        ? 'Schema generated and validated successfully'
+        : `Schema generated with ${validationErrors.length} validation warning(s)`
+})
 
     } catch (error) {
-        console.error('Generate schema v2 error:', error)
-        res.status(500).json({ error: error.message })
-    }
+    console.error('Generate schema v2 error:', error)
+    res.status(500).json({ error: error.message })
+}
 })
 
 // ============================================

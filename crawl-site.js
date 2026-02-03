@@ -44,8 +44,9 @@ function getSupabase() {
     return _supabase
 }
 
-const DELAY_MS = 500  // Polite delay between requests
-const TIMEOUT_MS = 30000
+const DELAY_MS = 200   // Delay between requests (200ms = ~5 pages/sec max)
+const TIMEOUT_MS = 15000  // Per-page timeout (15 sec max)
+const MAX_RETRIES = 2  // Retry failed pages up to 2 times
 const MAX_CLEANED_HTML_LENGTH = 15000
 
 // ============================================================
@@ -267,7 +268,7 @@ class UrlQueue {
 
 let lastFetchTime = 0
 
-async function fetchPage(url) {
+async function fetchPage(url, retryCount = 0) {
     // Rate limiting
     const elapsed = Date.now() - lastFetchTime
     if (elapsed < DELAY_MS) {
@@ -302,6 +303,15 @@ async function fetchPage(url) {
         }
     } catch (error) {
         lastFetchTime = Date.now()
+
+        // Retry on timeout or network errors
+        if (retryCount < MAX_RETRIES && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message.includes('timeout'))) {
+            const backoffMs = Math.pow(2, retryCount) * 1000 // 1s, 2s, 4s...
+            console.log(`   ⏳ Retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs}ms...`)
+            await new Promise(resolve => setTimeout(resolve, backoffMs))
+            return fetchPage(url, retryCount + 1)
+        }
+
         return {
             url,
             finalUrl: url,
