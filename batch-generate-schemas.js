@@ -17,13 +17,33 @@ import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import { preflightCheck, savePageSchema, updateCachedSchema } from './schema-utils.js';
 
-// OpenAI client for LLM-based extraction
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Lazy-initialized clients (created on first use, not at module load)
+let _openai = null;
+let _supabase = null;
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-);
+function getOpenAI() {
+    if (!_openai) {
+        _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    }
+    return _openai;
+}
+
+function getSupabase() {
+    if (!_supabase) {
+        _supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+        );
+    }
+    return _supabase;
+}
+
+// Legacy aliases for compatibility
+const openai = { get chat() { return getOpenAI().chat; } };
+const supabase = {
+    from: (...args) => getSupabase().from(...args),
+    rpc: (...args) => getSupabase().rpc(...args)
+};
 
 // Detect if running as CLI (vs being imported as a module)
 const isRunningAsCLI = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
