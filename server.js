@@ -982,6 +982,19 @@ app.get('/api/debug-db', async (req, res) => {
             simulation = result;
         }
 
+        // Optional: Test Crawl (synchronous for debugging)
+        let crawlTest = null;
+        if (req.query.action === 'test_crawl' && req.query.site_id) {
+            try {
+                const { runCrawl } = await import('./crawl-site.js');
+                crawlTest = { importing: 'success' };
+                await runCrawl(req.query.site_id, 3, []);
+                crawlTest.result = 'completed';
+            } catch (err) {
+                crawlTest = { error: err.message, stack: err.stack };
+            }
+        }
+
         const { data: sites, error } = await supabase
             .from('site_index')
             .select('id, domain, created_at')
@@ -995,6 +1008,7 @@ app.get('/api/debug-db', async (req, res) => {
             write_test: writeResult,
             find_result: findResult,
             simulation: simulation,
+            crawl_test: crawlTest,
             error: error?.message || null,
             env_vars: {
                 HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
