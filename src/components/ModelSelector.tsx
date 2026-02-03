@@ -38,12 +38,12 @@ export const AI_MODELS: Model[] = [
     { value: 'claude-haiku-4', label: 'Claude Haiku 4', provider: 'claude', description: 'Fastest' },
     { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet', provider: 'claude', description: 'Legacy' },
 
-    // Gemini (Google)
-    { value: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', provider: 'gemini', description: 'Best quality' },
-    { value: 'gemini-2.5-flash-preview-05-20', label: 'Gemini 2.5 Flash', provider: 'gemini', description: 'Fast & capable' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini', description: 'Multimodal' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', provider: 'gemini', description: '1M context' },
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', provider: 'gemini', description: 'Fast' },
+    // Gemini (Google) - Updated Feb 2026
+    { value: 'gemini-3-flash', label: 'Gemini 3 Flash', provider: 'gemini', description: 'Latest & fastest' },
+    { value: 'gemini-3-pro', label: 'Gemini 3 Pro', provider: 'gemini', description: 'Most capable' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', provider: 'gemini', description: '1M context' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', provider: 'gemini', description: 'Fast & smart' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', provider: 'gemini', description: 'Legacy' },
 ]
 
 // Provider colors for visual distinction
