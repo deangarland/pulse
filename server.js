@@ -903,6 +903,32 @@ app.post('/api/sites', async (req, res) => {
     }
 })
 
+// DEBUG: Check DB Connection
+app.get('/api/debug-db', async (req, res) => {
+    try {
+        const dbUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+        const { data: sites, error } = await supabase
+            .from('site_index')
+            .select('id, domain, created_at')
+            .order('created_at', { ascending: false })
+            .limit(5)
+
+        res.json({
+            connected_url: dbUrl ? dbUrl.replace(/https:\/\/([^.]+)\..*/, 'https://$1.supabase.co') : 'MISSING',
+            sites_found: sites?.length || 0,
+            recent_sites: sites || [],
+            error: error?.message || null,
+            env_vars: {
+                HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
+                HAS_VITE_URL: !!process.env.VITE_SUPABASE_URL,
+                HAS_SERVICE_KEY: !!(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY)
+            }
+        })
+    } catch (err) {
+        res.status(500).json({ error: err.message })
+    }
+})
+
 // GET /api/sites/:id/status - Real-time crawl progress
 app.get('/api/sites/:id/status', async (req, res) => {
     try {
