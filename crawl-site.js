@@ -373,7 +373,7 @@ async function savePage(siteId, url, data) {
 // Classifier Integration
 // ============================================================
 
-function runClassifier(siteId) {
+function executeClassifier(siteId) {
     return new Promise((resolve, reject) => {
         console.log(`\n🧠 Starting page classification...`)
 
@@ -392,7 +392,7 @@ function runClassifier(siteId) {
 // Main Crawler - Exported for in-process use
 // ============================================================
 
-export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
+export async function runCrawl(siteId, pageLimit = 200, excludePatterns = [], runClassifier = true) {
     if (!siteId) {
         throw new Error('siteId is required')
     }
@@ -492,9 +492,13 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
 
         console.log(`\n✅ Crawl complete! Processed ${pagesProcessed} pages.`)
 
-        // Run classifier
-        await updateSiteStatus(siteId, 'classifying')
-        await runClassifier(siteId)
+        // Run classifier (if enabled)
+        if (runClassifier) {
+            await updateSiteStatus(siteId, 'classifying')
+            await executeClassifier(siteId)
+        } else {
+            console.log('⏭️ Classifier skipped (disabled by user)')
+        }
 
         // Sync final page count from actual database count
         const { count } = await getSupabase()
