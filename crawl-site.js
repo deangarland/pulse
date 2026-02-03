@@ -130,6 +130,8 @@ function parsePage(html, baseUrl) {
         const href = $(el).attr('href')
         if (!href) return
         if (href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return
+        // Skip malformed URLs containing HTML tags (e.g., broken iframe embeds)
+        if (href.includes('<') || href.includes('%3C')) return
 
         try {
             const resolved = new URL(href, base.origin)
