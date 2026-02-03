@@ -33,7 +33,7 @@ const providerColors: Record<string, string> = {
 }
 
 function formatCost(cents: number): string {
-    return `$${(cents / 100).toFixed(4)}`
+    return `$${(cents / 100).toFixed(2)}`
 }
 
 function formatDate(dateString: string): string {
