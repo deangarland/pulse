@@ -934,6 +934,56 @@ app.get('/api/debug-db', async (req, res) => {
             findResult = { data, error: error?.message }
         }
 
+        // Optional: Simulate Create
+        let simulation = null;
+        if (req.query.action === 'simulate_create' && req.query.url) {
+            const result = { logs: [], success: false, data: null, error: null };
+            try {
+                result.logs.push(`Parsing URL: ${req.query.url}`);
+                const domain = new URL(req.query.url).hostname;
+                result.logs.push(`Domain: ${domain}`);
+
+                const { data: existing, error: existError } = await supabase
+                    .from('site_index')
+                    .select('id, domain')
+                    .eq('domain', domain)
+                    .single();
+
+                result.logs.push(`Check Existing: ${existError ? 'Error/Not Found' : 'Found ' + (existing?.id || 'null')}`);
+
+                if (existing) {
+                    result.logs.push('Path: UPDATE');
+                    const { data, error } = await supabase
+                        .from('site_index')
+                        .update({ crawl_status: 'in_progress', updated_at: new Date().toISOString() })
+                        .eq('id', existing.id)
+                        .select()
+                        .single();
+                    result.data = data;
+                    result.error = error?.message;
+                } else {
+                    result.logs.push('Path: INSERT');
+                    const { data, error } = await supabase
+                        .from('site_index')
+                        .insert({
+                            url: req.query.url,
+                            domain: domain,
+                            crawl_status: 'in_progress',
+                            pages_crawled: 0
+                        })
+                        .select()
+                        .single();
+                    result.data = data;
+                    result.error = error?.message;
+                }
+                result.success = !result.error;
+            } catch (e) {
+                result.error = e.message;
+                result.logs.push(`Exception: ${e.message}`);
+            }
+            simulation = result;
+        }
+
         const { data: sites, error } = await supabase
             .from('site_index')
             .select('id, domain, created_at')
@@ -946,6 +996,7 @@ app.get('/api/debug-db', async (req, res) => {
             recent_sites: sites || [],
             write_test: writeResult,
             find_result: findResult,
+            simulation: simulation,
             error: error?.message || null,
             env_vars: {
                 HAS_SUPABASE_URL: !!process.env.SUPABASE_URL,
