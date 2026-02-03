@@ -4,30 +4,38 @@ import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
+    DialogFooter,
 } from "@/components/ui/dialog"
-import { Save, Edit2, X, Loader2, MessageSquare, HelpCircle } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/DataTable"
+import { Save, Loader2, MessageSquare, HelpCircle, Edit2, Copy, Check } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 
 interface Prompt {
     id: string
     name: string
-    description: string
+    description: string | null
     system_prompt: string
-    default_model: string
+    user_prompt_template: string | null
+    default_model: string | null
     updated_at: string
 }
 
 export default function Prompts() {
     const queryClient = useQueryClient()
-    const [editingId, setEditingId] = useState<string | null>(null)
-    const [editedPrompt, setEditedPrompt] = useState("")
+    const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null)
+    const [editForm, setEditForm] = useState({
+        system_prompt: "",
+        user_prompt_template: "",
+        default_model: "gpt-4o-mini"
+    })
 
     // Fetch prompts
     const { data: prompts, isLoading } = useQuery({
@@ -43,36 +51,19 @@ export default function Prompts() {
         }
     })
 
-    // Update prompt text mutation
+    // Update prompt mutation
     const updateMutation = useMutation({
-        mutationFn: async ({ id, system_prompt }: { id: string, system_prompt: string }) => {
+        mutationFn: async ({ id, system_prompt, user_prompt_template, default_model }: {
+            id: string,
+            system_prompt: string,
+            user_prompt_template: string | null,
+            default_model: string
+        }) => {
             const { error } = await supabase
                 .from('prompts')
                 .update({
                     system_prompt,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', id)
-
-            if (error) throw error
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['prompts'] })
-            toast.success('Prompt saved successfully')
-            setEditingId(null)
-            setEditedPrompt("")
-        },
-        onError: (error) => {
-            toast.error(`Failed to save: ${error.message}`)
-        }
-    })
-
-    // Update model mutation (separate for quick model changes)
-    const updateModelMutation = useMutation({
-        mutationFn: async ({ id, default_model }: { id: string, default_model: string }) => {
-            const { error } = await supabase
-                .from('prompts')
-                .update({
+                    user_prompt_template: user_prompt_template || null,
                     default_model,
                     updated_at: new Date().toISOString()
                 })
@@ -82,38 +73,132 @@ export default function Prompts() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['prompts'] })
-            toast.success('Default model updated')
+            toast.success('Prompt saved successfully')
+            setEditingPrompt(null)
         },
         onError: (error) => {
-            toast.error(`Failed to update model: ${error.message}`)
+            toast.error(`Failed to save: ${error.message}`)
         }
     })
 
-    const startEditing = (prompt: Prompt) => {
-        setEditingId(prompt.id)
-        setEditedPrompt(prompt.system_prompt)
+    const openEditModal = (prompt: Prompt) => {
+        setEditingPrompt(prompt)
+        setEditForm({
+            system_prompt: prompt.system_prompt,
+            user_prompt_template: prompt.user_prompt_template || "",
+            default_model: prompt.default_model || "gpt-4o-mini"
+        })
     }
 
-    const cancelEditing = () => {
-        setEditingId(null)
-        setEditedPrompt("")
+    const closeEditModal = () => {
+        setEditingPrompt(null)
     }
 
-    const savePrompt = (id: string) => {
-        updateMutation.mutate({ id, system_prompt: editedPrompt })
+    const savePrompt = () => {
+        if (!editingPrompt) return
+        updateMutation.mutate({
+            id: editingPrompt.id,
+            system_prompt: editForm.system_prompt,
+            user_prompt_template: editForm.user_prompt_template || null,
+            default_model: editForm.default_model
+        })
     }
 
     const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleString()
+        return new Date(dateString).toLocaleDateString()
     }
 
-    if (isLoading) {
+    // Copy prompt to clipboard
+    const CopyButton = ({ text }: { text: string }) => {
+        const [copied, setCopied] = useState(false)
+        const handleCopy = async () => {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        }
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
+            <button onClick={handleCopy} className="p-1 hover:bg-muted rounded">
+                {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+            </button>
         )
     }
+
+    // Table columns
+    const columns: ColumnDef<Prompt>[] = [
+        {
+            accessorKey: 'name',
+            header: 'Prompt Name',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                        <div className="font-medium">{row.original.name}</div>
+                        {row.original.description && (
+                            <div className="text-xs text-muted-foreground truncate max-w-xs">
+                                {row.original.description}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ),
+            size: 300
+        },
+        {
+            accessorKey: 'default_model',
+            header: 'Default Model',
+            cell: ({ row }) => (
+                <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                    {row.original.default_model || 'gpt-4o'}
+                </span>
+            ),
+            size: 120
+        },
+        {
+            accessorKey: 'system_prompt',
+            header: 'System Prompt',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2 max-w-md">
+                    <span className="text-xs text-muted-foreground truncate">
+                        {row.original.system_prompt.substring(0, 80)}...
+                    </span>
+                    <CopyButton text={row.original.system_prompt} />
+                </div>
+            ),
+            size: 300
+        },
+        {
+            accessorKey: 'user_prompt_template',
+            header: 'User Template',
+            cell: ({ row }) => (
+                <span className={`text-xs ${row.original.user_prompt_template ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {row.original.user_prompt_template ? '✓ Set' : '—'}
+                </span>
+            ),
+            size: 100
+        },
+        {
+            accessorKey: 'updated_at',
+            header: 'Updated',
+            cell: ({ row }) => (
+                <span className="text-xs text-muted-foreground">
+                    {formatDate(row.original.updated_at)}
+                </span>
+            ),
+            size: 100
+        }
+    ]
+
+    // Row actions
+    const rowActions = (row: Prompt) => (
+        <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => openEditModal(row)}
+        >
+            <Edit2 className="h-4 w-4 mr-1" />
+            Edit
+        </Button>
+    )
 
     return (
         <div className="space-y-6">
@@ -125,186 +210,109 @@ export default function Prompts() {
                     </p>
                 </div>
                 <Dialog>
-                    <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="gap-2" asChild>
+                        <label>
                             <HelpCircle className="h-4 w-4" />
                             How to choose a model
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>AI Model Comparison & Pricing</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-6 text-sm">
-                            {/* OpenAI Section */}
-                            <div>
-                                <h3 className="font-semibold text-base mb-2 text-green-700">OpenAI Models</h3>
-                                <table className="w-full text-xs">
-                                    <thead>
-                                        <tr className="border-b">
-                                            <th className="text-left py-1">Model</th>
-                                            <th className="text-right py-1">Input/1M</th>
-                                            <th className="text-right py-1">Output/1M</th>
-                                            <th className="text-left py-1 pl-3">Best For</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">o3-mini</td><td className="text-right">$1.10</td><td className="text-right">$4.40</td><td className="pl-3 text-muted-foreground">Reasoning, cost-effective</td></tr>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">o1</td><td className="text-right">$15.00</td><td className="text-right">$60.00</td><td className="pl-3 text-muted-foreground">Complex reasoning, math</td></tr>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">GPT-4o</td><td className="text-right">$2.50</td><td className="text-right">$10.00</td><td className="pl-3 text-muted-foreground">Flagship - best balance</td></tr>
-                                        <tr className="border-b border-dashed bg-green-50"><td className="py-1 font-medium">GPT-4o-mini</td><td className="text-right">$0.15</td><td className="text-right">$0.60</td><td className="pl-3 text-muted-foreground">⭐ Best value for volume</td></tr>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">GPT-4 Turbo</td><td className="text-right">$10.00</td><td className="text-right">$30.00</td><td className="pl-3 text-muted-foreground">128K context</td></tr>
-                                        <tr><td className="py-1 font-medium">GPT-3.5 Turbo</td><td className="text-right">$0.50</td><td className="text-right">$1.50</td><td className="pl-3 text-muted-foreground">Fast, cheapest</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Claude Section */}
-                            <div>
-                                <h3 className="font-semibold text-base mb-2 text-orange-700">Claude (Anthropic)</h3>
-                                <table className="w-full text-xs">
-                                    <thead>
-                                        <tr className="border-b">
-                                            <th className="text-left py-1">Model</th>
-                                            <th className="text-right py-1">Input/1M</th>
-                                            <th className="text-right py-1">Output/1M</th>
-                                            <th className="text-left py-1 pl-3">Best For</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">Claude 4.5 Opus</td><td className="text-right">$5.00</td><td className="text-right">$25.00</td><td className="pl-3 text-muted-foreground">Peak intelligence</td></tr>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">Claude 4.5 Sonnet</td><td className="text-right">$3.00</td><td className="text-right">$15.00</td><td className="pl-3 text-muted-foreground">Balanced, agents</td></tr>
-                                        <tr className="bg-orange-50"><td className="py-1 font-medium">Claude 4.5 Haiku</td><td className="text-right">$1.00</td><td className="text-right">$5.00</td><td className="pl-3 text-muted-foreground">⭐ Fast & cheap</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Gemini Section */}
-                            <div>
-                                <h3 className="font-semibold text-base mb-2 text-blue-700">Gemini (Google)</h3>
-                                <table className="w-full text-xs">
-                                    <thead>
-                                        <tr className="border-b">
-                                            <th className="text-left py-1">Model</th>
-                                            <th className="text-right py-1">Input/1M</th>
-                                            <th className="text-right py-1">Output/1M</th>
-                                            <th className="text-left py-1 pl-3">Best For</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">Gemini 2.5 Pro</td><td className="text-right">$1.25</td><td className="text-right">$10.00</td><td className="pl-3 text-muted-foreground">Best quality, reasoning</td></tr>
-                                        <tr className="border-b border-dashed"><td className="py-1 font-medium">Gemini 2.5 Flash</td><td className="text-right">$0.15</td><td className="text-right">$0.60</td><td className="pl-3 text-muted-foreground">Fast, multimodal</td></tr>
-                                        <tr className="bg-blue-50"><td className="py-1 font-medium">Gemini 2.5 Flash-Lite</td><td className="text-right">$0.075</td><td className="text-right">$0.30</td><td className="pl-3 text-muted-foreground">⭐ Cheapest option</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Recommendations */}
-                            <div className="bg-muted/50 rounded-lg p-4">
-                                <h3 className="font-semibold mb-2">💡 Recommendations for Pulse</h3>
-                                <ul className="space-y-1 text-xs text-muted-foreground">
-                                    <li><strong>Daily SEO work:</strong> GPT-4o-mini or Gemini 2.5 Flash</li>
-                                    <li><strong>Quality content:</strong> GPT-4o or Claude Sonnet</li>
-                                    <li><strong>Complex reasoning:</strong> o3-mini or Claude Opus</li>
-                                    <li><strong>Budget priority:</strong> Gemini 2.5 Flash-Lite</li>
-                                </ul>
-                            </div>
-
-                            <p className="text-xs text-muted-foreground italic">
-                                Note: Claude and Gemini models will be available once API keys are configured.
-                            </p>
-                        </div>
-                    </DialogContent>
+                        </label>
+                    </Button>
                 </Dialog>
             </div>
 
-            {prompts?.length === 0 && (
-                <Card>
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No prompts found. Run the database migration to create default prompts.</p>
-                    </CardContent>
-                </Card>
-            )}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5" />
+                        All Prompts ({prompts?.length || 0})
+                    </CardTitle>
+                    <CardDescription>
+                        Click Edit to modify system prompts, user templates, and default models
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <DataTable
+                        columns={columns}
+                        data={prompts || []}
+                        loading={isLoading}
+                        storageKey="prompts_table"
+                        rowActions={rowActions}
+                    />
+                </CardContent>
+            </Card>
 
-            {prompts?.map((prompt) => (
-                <Card key={prompt.id}>
-                    <CardHeader>
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <CardTitle className="flex items-center gap-2">
-                                    <MessageSquare className="h-5 w-5" />
-                                    {prompt.name}
-                                </CardTitle>
-                                <CardDescription className="mt-1">
-                                    {prompt.description}
-                                </CardDescription>
-                                <div className="mt-2 flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">Default Model:</span>
-                                    <ModelSelector
-                                        value={prompt.default_model || 'gpt-4o'}
-                                        onChange={(model) => updateModelMutation.mutate({ id: prompt.id, default_model: model })}
-                                        disabled={updateModelMutation.isPending}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-2">
-                                {editingId === prompt.id ? (
-                                    <>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={cancelEditing}
-                                            disabled={updateMutation.isPending}
-                                        >
-                                            <X className="h-4 w-4 mr-1" />
-                                            Cancel
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            onClick={() => savePrompt(prompt.id)}
-                                            disabled={updateMutation.isPending}
-                                        >
-                                            {updateMutation.isPending ? (
-                                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                            ) : (
-                                                <Save className="h-4 w-4 mr-1" />
-                                            )}
-                                            Save
-                                        </Button>
-                                    </>
-                                ) : (
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => startEditing(prompt)}
-                                    >
-                                        <Edit2 className="h-4 w-4 mr-1" />
-                                        Edit
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {editingId === prompt.id ? (
-                            <Textarea
-                                value={editedPrompt}
-                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditedPrompt(e.target.value)}
-                                className="min-h-[300px] font-mono text-sm"
-                                placeholder="Enter your system prompt..."
-                            />
-                        ) : (
-                            <div className="bg-muted/50 rounded-lg p-4 font-mono text-sm whitespace-pre-wrap">
-                                {prompt.system_prompt}
+            {/* Edit Modal */}
+            <Dialog open={!!editingPrompt} onOpenChange={(open) => !open && closeEditModal()}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <MessageSquare className="h-5 w-5" />
+                            Edit: {editingPrompt?.name}
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-6 py-4">
+                        {/* Description (read-only) */}
+                        {editingPrompt?.description && (
+                            <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                                {editingPrompt.description}
                             </div>
                         )}
-                        <p className="text-xs text-muted-foreground mt-3">
-                            Last updated: {formatDate(prompt.updated_at)}
-                        </p>
-                    </CardContent>
-                </Card>
-            ))}
+
+                        {/* Default Model */}
+                        <div className="space-y-2">
+                            <Label>Default Model</Label>
+                            <ModelSelector
+                                value={editForm.default_model}
+                                onChange={(model) => setEditForm(prev => ({ ...prev, default_model: model }))}
+                            />
+                        </div>
+
+                        {/* System Prompt */}
+                        <div className="space-y-2">
+                            <Label>System Prompt</Label>
+                            <Textarea
+                                value={editForm.system_prompt}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, system_prompt: e.target.value }))}
+                                className="min-h-[200px] font-mono text-sm"
+                                placeholder="Enter the system prompt..."
+                            />
+                        </div>
+
+                        {/* User Prompt Template */}
+                        <div className="space-y-2">
+                            <Label>User Prompt Template (optional)</Label>
+                            <p className="text-xs text-muted-foreground">
+                                Use {`{{variable}}`} placeholders for dynamic content (e.g., {`{{title}}`}, {`{{content}}`}, {`{{pageUrl}}`})
+                            </p>
+                            <Textarea
+                                value={editForm.user_prompt_template}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, user_prompt_template: e.target.value }))}
+                                className="min-h-[150px] font-mono text-sm"
+                                placeholder="Enter the user prompt template with {{variables}}..."
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={closeEditModal} disabled={updateMutation.isPending}>
+                            Cancel
+                        </Button>
+                        <Button onClick={savePrompt} disabled={updateMutation.isPending}>
+                            {updateMutation.isPending ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="h-4 w-4 mr-2" />
+                                    Save Changes
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

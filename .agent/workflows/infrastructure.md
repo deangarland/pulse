@@ -18,10 +18,12 @@ npx @railway/cli deployment up    # Manual deploy from current directory
 **Service**: pulse  
 
 ## Supabase Direct Access
-You have direct SQL access to Supabase via `db-run.js`:
+You have direct SQL access to Supabase via `db-run.js` located at `/Users/joegriffin/Documents/anti/Pulse/db-run.js`:
 
 ### Running SQL
 ```bash
+# Run from Pulse directory (not pulse-platform-ui)
+cd /Users/joegriffin/Documents/anti/Pulse
 # Run a query
 node db-run.js "SELECT * FROM accounts LIMIT 5"
 
