@@ -15,6 +15,7 @@ import { load } from 'cheerio';
 import OpenAI from 'openai';
 import 'dotenv/config';
 import { fileURLToPath } from 'url';
+import { preflightCheck, savePageSchema, updateCachedSchema } from './schema-utils.js';
 
 // OpenAI client for LLM-based extraction
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -1262,6 +1263,42 @@ export async function generateSchemaForPageById(pageId, options = {}) {
         }
     }
 
+    // Determine schema type based on page_type
+    const schemaTypeMap = {
+        'PROCEDURE': 'MedicalProcedure',
+        'TEAM_MEMBER': 'Physician',
+        'RESOURCE': 'BlogPosting',
+        'GALLERY': 'ImageGallery',
+        'HOMEPAGE': 'MedicalBusiness',
+        'LOCATION': 'MedicalBusiness',
+        'CONTACT': 'MedicalBusiness'
+    };
+    const primarySchemaType = schemaTypeMap[page.page_type] || null;
+
+    // Run pre-flight validation if we have a mapped schema type
+    if (primarySchemaType) {
+        const preflight = await preflightCheck(primarySchemaType, page.site_id, pageId);
+
+        if (!preflight.canGenerate) {
+            // Store errors and return failure - don't generate with missing data
+            await supabase
+                .from('page_index')
+                .update({
+                    schema_status: 'preflight_failed',
+                    schema_errors: preflight.errors,
+                    schema_generated_at: new Date().toISOString()
+                })
+                .eq('id', pageId);
+
+            return {
+                success: false,
+                error: 'Pre-flight validation failed',
+                preflightErrors: preflight.errors,
+                pageType: page.page_type
+            };
+        }
+    }
+
     // Generate schema
     const result = await generateSchemaForPage(page, siteProfile, siteUrl);
 
@@ -1284,18 +1321,20 @@ export async function generateSchemaForPageById(pageId, options = {}) {
         };
     }
 
-    // Validate and save
+    // Validate the generated schema
     const validation = validateSchema(result.schemas);
 
-    await supabase
-        .from('page_index')
-        .update({
-            recommended_schema: result.schemas,
-            schema_status: validation.status,
-            schema_errors: validation.errors,
-            schema_generated_at: new Date().toISOString()
-        })
-        .eq('id', pageId);
+    // Save individual schemas to page_schemas table
+    const graphSchemas = result.schemas?.['@graph'] || [];
+    for (const schemaObj of graphSchemas) {
+        const schemaType = schemaObj['@type'];
+        if (schemaType) {
+            await savePageSchema(pageId, schemaType, schemaObj, 'template', validation);
+        }
+    }
+
+    // Update cached combined schema in page_index
+    await updateCachedSchema(pageId, siteUrl);
 
     return {
         success: true,
@@ -1305,3 +1344,4 @@ export async function generateSchemaForPageById(pageId, options = {}) {
         validation
     };
 }
+
