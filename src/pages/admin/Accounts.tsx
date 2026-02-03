@@ -162,11 +162,22 @@ export default function Accounts() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
-                    <p className="text-muted-foreground">
-                        Manage client configuration and locations for {account?.account_name || 'loading...'}
-                    </p>
+                <div className="flex items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
+                        <p className="text-muted-foreground">
+                            Manage client configuration and locations
+                        </p>
+                    </div>
+                    <SearchableCombobox
+                        options={accountOptions}
+                        value={selectedAccountId}
+                        onValueChange={handleAccountChange}
+                        placeholder="Switch client..."
+                        searchPlaceholder="Search clients..."
+                        emptyText="No clients found."
+                        className="w-[250px]"
+                    />
                 </div>
                 <Button
                     onClick={handleSave}
