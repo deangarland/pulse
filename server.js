@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { generateSchemaForPageById } from '../batch-generate-schemas.js'
+import { generateSchemaForPageById } from './batch-generate-schemas.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
