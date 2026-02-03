@@ -31,6 +31,11 @@ function getSupabase() {
             process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
 
         if (!supabaseUrl || !supabaseKey) {
+            console.error('Supabase Init Failed. Env vars present:')
+            console.error('SUPABASE_URL:', !!process.env.SUPABASE_URL)
+            console.error('VITE_SUPABASE_URL:', !!process.env.VITE_SUPABASE_URL)
+            console.error('SUPABASE_SERVICE_KEY:', !!process.env.SUPABASE_SERVICE_KEY)
+            console.error('VITE_SUPABASE_SERVICE_KEY:', !!process.env.VITE_SUPABASE_SERVICE_KEY)
             throw new Error(`Missing Supabase credentials. URL: ${!!supabaseUrl}, Key: ${!!supabaseKey}`)
         }
 
@@ -353,30 +358,31 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = []) {
         throw new Error('siteId is required')
     }
 
-    console.log(`\n🕷️ Starting crawl for site ${siteId}`)
-    console.log(`   Page limit: ${pageLimit}`)
-    console.log(`   Exclude patterns: ${excludePatterns.length > 0 ? excludePatterns.join(', ') : 'none'}`)
-
-    // Get site info
-    const { data: site, error: siteError } = await getSupabase()
-        .from('site_index')
-        .select('*')
-        .eq('id', siteId)
-        .single()
-
-    if (siteError || !site) {
-        throw new Error(`Site not found: ${siteError?.message}`)
-    }
-
-    console.log(`   URL: ${site.url}`)
-
     // Initialize queue with starting URL
-    const queue = new UrlQueue(site.url, pageLimit, excludePatterns)
-    queue.add(site.url)
-
-    let pagesProcessed = 0
+    let queue;
 
     try {
+        console.log(`\n🕷️ Starting crawl for site ${siteId}`)
+        console.log(`   Page limit: ${pageLimit}`)
+        console.log(`   Exclude patterns: ${excludePatterns.length > 0 ? excludePatterns.join(', ') : 'none'}`)
+
+        // Get site info
+        const { data: site, error: siteError } = await getSupabase()
+            .from('site_index')
+            .select('*')
+            .eq('id', siteId)
+            .single()
+
+        if (siteError || !site) {
+            throw new Error(`Site not found: ${siteError?.message}`)
+        }
+
+        console.log(`   URL: ${site.url}`)
+
+        queue = new UrlQueue(site.url, pageLimit, excludePatterns)
+        queue.add(site.url)
+
+        let pagesProcessed = 0
         await updateSiteStatus(siteId, 'in_progress')
 
         while (queue.canContinue()) {
