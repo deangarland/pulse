@@ -119,7 +119,7 @@ async function getPrompt(promptName) {
     try {
         const { data, error } = await getSupabase()
             .from('prompts')
-            .select('system_prompt, user_prompt_template, default_model')
+            .select('system_prompt, default_model')
             .eq('name', promptName)
             .single()
 
@@ -260,18 +260,10 @@ async function analyzeSiteStructure(pages) {
     const promptData = await getPrompt('Page Classifier - Site Analysis')
     const model = promptData?.default_model || 'gpt-4o-mini'
 
-    let prompt
-    if (promptData?.system_prompt && promptData?.user_prompt_template) {
-        // Combine system prompt and user template
-        prompt = promptData.system_prompt + '\n\n' + promptData.user_prompt_template
-            .replace('{{page_count}}', pages.length.toString())
-            .replace('{{page_summaries}}', pageSummaries.join('\n'))
-    } else {
-        // Use fallback
-        prompt = FALLBACK_SITE_ANALYSIS_PROMPT
-            .replace('{{page_count}}', pages.length.toString())
-            .replace('{{page_summaries}}', pageSummaries.join('\n'))
-    }
+    // Use DB prompt (with placeholders inside system_prompt) or fallback
+    let prompt = (promptData?.system_prompt || FALLBACK_SITE_ANALYSIS_PROMPT)
+        .replace('{{page_count}}', pages.length.toString())
+        .replace('{{page_summaries}}', pageSummaries.join('\n'))
 
     const startTime = Date.now()
 
@@ -346,26 +338,14 @@ Use these patterns to help classify this page.`;
     const promptData = await getPrompt('Page Classifier - Page Type')
     const model = promptData?.default_model || 'gpt-4o-mini'
 
-    let prompt
-    if (promptData?.system_prompt && promptData?.user_prompt_template) {
-        // Combine system prompt and user template with replacements
-        prompt = promptData.system_prompt + '\n\n' + promptData.user_prompt_template
-            .replace('{{site_context}}', siteContextSection)
-            .replace('{{page_path}}', page.path || '')
-            .replace('{{page_title}}', page.title || '')
-            .replace('{{meta_description}}', page.meta_tags?.description || '')
-            .replace('{{content_length}}', contentLength.toString())
-            .replace('{{html_preview}}', htmlPreview)
-    } else {
-        // Use fallback
-        prompt = FALLBACK_PAGE_TYPE_PROMPT
-            .replace('{{site_context}}', siteContextSection)
-            .replace('{{page_path}}', page.path || '')
-            .replace('{{page_title}}', page.title || '')
-            .replace('{{meta_description}}', page.meta_tags?.description || '')
-            .replace('{{content_length}}', contentLength.toString())
-            .replace('{{html_preview}}', htmlPreview)
-    }
+    // Use DB prompt (with placeholders inside system_prompt) or fallback
+    let prompt = (promptData?.system_prompt || FALLBACK_PAGE_TYPE_PROMPT)
+        .replace('{{site_context}}', siteContextSection)
+        .replace('{{page_path}}', page.path || '')
+        .replace('{{page_title}}', page.title || '')
+        .replace('{{meta_description}}', page.meta_tags?.description || '')
+        .replace('{{content_length}}', contentLength.toString())
+        .replace('{{html_preview}}', htmlPreview)
 
     const startTime = Date.now()
 

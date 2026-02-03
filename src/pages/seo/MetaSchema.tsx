@@ -103,6 +103,131 @@ function PriorityBadge({ priority }: { priority: string }) {
     )
 }
 
+// Schema Component Card for carousel
+function SchemaComponentCard({
+    schema,
+    isExpanded,
+    onToggle
+}: {
+    schema: any
+    isExpanded: boolean
+    onToggle: () => void
+}) {
+    const schemaType = schema['@type'] || 'Unknown'
+    const [copied, setCopied] = useState(false)
+
+    const handleCopy = async (e: React.MouseEvent) => {
+        e.stopPropagation()
+        await navigator.clipboard.writeText(JSON.stringify(schema, null, 2))
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+
+    // Get icon/color based on schema type
+    const getSchemaStyle = (type: string) => {
+        const styles: Record<string, { bg: string; border: string; text: string }> = {
+            'MedicalProcedure': { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' },
+            'MedicalBusiness': { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' },
+            'Physician': { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700' },
+            'Person': { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700' },
+            'Organization': { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700' },
+            'LocalBusiness': { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700' },
+            'PostalAddress': { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700' },
+            'BreadcrumbList': { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700' },
+            'BlogPosting': { bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-700' },
+            'FAQPage': { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700' },
+        }
+        return styles[type] || { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700' }
+    }
+
+    const style = getSchemaStyle(schemaType)
+
+    return (
+        <div
+            className={`flex-shrink-0 w-64 border rounded-lg ${style.border} ${style.bg} cursor-pointer transition-all hover:shadow-md ${isExpanded ? 'ring-2 ring-primary' : ''}`}
+            onClick={onToggle}
+        >
+            <div className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                    <span className={`font-medium text-sm ${style.text}`}>{schemaType}</span>
+                    <button
+                        onClick={handleCopy}
+                        className="p-1 hover:bg-white/50 rounded"
+                    >
+                        {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3 text-gray-500" />}
+                    </button>
+                </div>
+
+                {/* Key fields preview */}
+                <div className="space-y-1 text-xs text-gray-600">
+                    {schema.name && (
+                        <div className="truncate">
+                            <span className="text-gray-400">name:</span> {schema.name}
+                        </div>
+                    )}
+                    {schema.url && (
+                        <div className="truncate">
+                            <span className="text-gray-400">url:</span> {schema.url}
+                        </div>
+                    )}
+                    {schema['@id'] && (
+                        <div className="truncate">
+                            <span className="text-gray-400">@id:</span> {schema['@id']}
+                        </div>
+                    )}
+                </div>
+
+                {/* Field count */}
+                <div className="mt-2 text-xs text-gray-400">
+                    {Object.keys(schema).filter(k => !k.startsWith('@') || k === '@type').length} fields
+                </div>
+            </div>
+
+            {/* Expanded view */}
+            {isExpanded && (
+                <div className="border-t p-3 bg-white rounded-b-lg">
+                    <pre className="text-xs overflow-x-auto max-h-48 overflow-y-auto bg-slate-950 text-slate-50 p-2 rounded">
+                        <code>{JSON.stringify(schema, null, 2)}</code>
+                    </pre>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// Schema Carousel Component
+function SchemaCarousel({ schemas }: { schemas: any[] }) {
+    const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+
+    if (!schemas || schemas.length === 0) {
+        return (
+            <div className="text-sm text-muted-foreground italic py-4">
+                No schema components to display
+            </div>
+        )
+    }
+
+    return (
+        <div className="relative">
+            <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                {schemas.map((schema, i) => (
+                    <SchemaComponentCard
+                        key={i}
+                        schema={schema}
+                        isExpanded={expandedIndex === i}
+                        onToggle={() => setExpandedIndex(expandedIndex === i ? null : i)}
+                    />
+                ))}
+            </div>
+
+            {/* Scroll indicators */}
+            {schemas.length > 3 && (
+                <div className="absolute right-0 top-0 bottom-4 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none" />
+            )}
+        </div>
+    )
+}
+
 // Character count display with color coding
 // Red: over max | Green: within 10% of max | Black: under
 function CharacterCount({ text, maxLength }: { text: string | null; maxLength: number }) {
@@ -613,137 +738,138 @@ ${schema?.overall_reasoning || 'N/A'}
                         </CardContent>
                     </Card>
 
-                    {/* Schema Comparison */}
+                    {/* Schema Comparison - New Layout */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Schema Markup</CardTitle>
-                            <div className="grid grid-cols-2 gap-4 text-xs font-medium text-muted-foreground border-b pb-2">
-                                <div>BEFORE (Current)</div>
-                                <div>AFTER (Recommended)</div>
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="text-base">Schema Markup</CardTitle>
+                                {page.schema_status && (
+                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
+                                            page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
+                                                'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                        {page.schema_status}
+                                        {page.schema_generated_at && (
+                                            <span className="ml-1 text-xs opacity-70">
+                                                • {new Date(page.schema_generated_at).toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
                             </div>
                         </CardHeader>
-                        <CardContent className="pt-0">
-                            <div className="grid grid-cols-2 gap-4 py-4">
-                                {/* Before - Current Schema */}
-                                <div>
-                                    {page.schema_markup?.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {page.schema_markup.map((schema, i) => (
-                                                <div key={i} className="text-xs">
-                                                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-gray-100">
-                                                        {schema.type || schema['@type'] || 'Unknown'}
-                                                    </span>
+                        <CardContent className="space-y-6">
+                            {/* Side-by-side Schema Panels */}
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Existing Schema */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                                        <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                        EXISTING SCHEMA
+                                    </div>
+                                    <div className="border rounded-lg bg-gray-50">
+                                        {page.schema_markup?.length > 0 ? (
+                                            <div>
+                                                <div className="p-3 border-b bg-gray-100/50 flex flex-wrap gap-1">
+                                                    {page.schema_markup.map((schema, i) => (
+                                                        <span key={i} className="inline-flex items-center rounded-full border px-2 py-0.5 bg-gray-200 text-gray-700 text-xs">
+                                                            {schema.type || schema['@type'] || 'Unknown'}
+                                                        </span>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                            <JsonPreview data={page.schema_markup} />
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2 text-sm text-amber-600">
-                                            <AlertCircle className="h-4 w-4" />
-                                            No schema markup found
-                                        </div>
-                                    )}
+                                                <JsonPreview data={page.schema_markup} className="rounded-t-none" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 p-4 text-sm text-amber-600">
+                                                <AlertCircle className="h-4 w-4" />
+                                                No schema markup found
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* After - Recommended Schema */}
-                                <div>
-                                    {(() => {
-                                        // Prefer recommended_schema (from batch generator), fallback to schema_recommendation
-                                        const batchSchema = page.recommended_schema;
-                                        const legacySchemas = page.schema_recommendation?.schemas;
+                                {/* Recommended Schema */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                                        <div className="w-2 h-2 rounded-full bg-green-500" />
+                                        RECOMMENDED SCHEMA
+                                    </div>
+                                    <div className="border rounded-lg bg-green-50 border-green-200">
+                                        {(() => {
+                                            const batchSchema = page.recommended_schema;
+                                            const legacySchemas = page.schema_recommendation?.schemas;
 
-                                        // Use batch schema if available
-                                        if (batchSchema && batchSchema['@graph']?.length > 0) {
-                                            const schemas = batchSchema['@graph'];
-                                            return (
-                                                <div className="space-y-4">
-                                                    {/* Status badge */}
-                                                    {page.schema_status && (
-                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
-                                                                page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
-                                                                    'bg-yellow-100 text-yellow-800'
-                                                            }`}>
-                                                            {page.schema_status}
-                                                        </span>
-                                                    )}
-
-                                                    {/* Combined Schema - Copy All */}
-                                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
-                                                            {page.schema_generated_at && (
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    Generated {new Date(page.schema_generated_at).toLocaleDateString()}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <JsonPreview data={batchSchema} />
-                                                    </div>
-
-                                                    {/* Individual Schema Breakdown */}
-                                                    <div className="border-t pt-4">
-                                                        <div className="text-xs font-medium text-muted-foreground mb-3">Schema Types:</div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {schemas.map((schema: any, i: number) => (
-                                                                <span key={i} className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
+                                            if (batchSchema && batchSchema['@graph']?.length > 0) {
+                                                return (
+                                                    <div>
+                                                        <div className="p-3 border-b border-green-200 bg-green-100/50 flex flex-wrap gap-1">
+                                                            {batchSchema['@graph'].map((schema: any, i: number) => (
+                                                                <span key={i} className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-200 text-green-800 border-green-300 text-xs font-medium">
                                                                     {schema['@type']}
                                                                 </span>
                                                             ))}
                                                         </div>
+                                                        <JsonPreview data={batchSchema} className="rounded-t-none" />
                                                     </div>
-                                                </div>
-                                            );
-                                        }
+                                                );
+                                            }
 
-                                        // Fallback to legacy schema_recommendation format
-                                        if (legacySchemas && legacySchemas.length > 0) {
-                                            const combinedSchema = legacySchemas.length === 1
-                                                ? legacySchemas[0].json_ld
-                                                : { "@context": "https://schema.org", "@graph": legacySchemas.map(s => s.json_ld) };
-
-                                            return (
-                                                <div className="space-y-6">
-                                                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="text-sm font-medium text-green-800">📋 Complete Schema (Copy this)</span>
-                                                        </div>
-                                                        <JsonPreview data={combinedSchema} />
-                                                    </div>
-
-                                                    <div className="border-t pt-4">
-                                                        <div className="text-xs font-medium text-muted-foreground mb-3">Individual Schemas Breakdown:</div>
-                                                        <div className="space-y-4">
+                                            if (legacySchemas && legacySchemas.length > 0) {
+                                                const combinedSchema = legacySchemas.length === 1
+                                                    ? legacySchemas[0].json_ld
+                                                    : { "@context": "https://schema.org", "@graph": legacySchemas.map(s => s.json_ld) };
+                                                return (
+                                                    <div>
+                                                        <div className="p-3 border-b border-green-200 bg-green-100/50 flex flex-wrap gap-1">
                                                             {legacySchemas.map((schema, i) => (
-                                                                <div key={i} className="space-y-2 bg-gray-50 rounded-lg p-3">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-100 text-green-800 border-green-200 text-xs font-medium">
-                                                                            {schema.type}
-                                                                        </span>
-                                                                        <PriorityBadge priority={schema.priority} />
-                                                                    </div>
-                                                                    <ReasoningSection reasoning={schema.reasoning} label="Why this schema?" />
-                                                                    <JsonPreview data={schema.json_ld} />
-                                                                </div>
+                                                                <span key={i} className="inline-flex items-center rounded-full border px-2 py-0.5 bg-green-200 text-green-800 border-green-300 text-xs font-medium">
+                                                                    {schema.type}
+                                                                </span>
                                                             ))}
                                                         </div>
+                                                        <JsonPreview data={combinedSchema} className="rounded-t-none" />
                                                     </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div className="p-4 text-sm text-muted-foreground italic">
+                                                    No recommendations yet - click Generate Schema
                                                 </div>
                                             );
-                                        }
-
-                                        // No schema available
-                                        return (
-                                            <div className="text-sm text-muted-foreground italic">
-                                                No recommendations yet - click Generate Schema
-                                            </div>
-                                        );
-                                    })()}
+                                        })()}
+                                    </div>
                                 </div>
                             </div>
 
+                            {/* Schema Components Carousel */}
+                            {(() => {
+                                const batchSchema = page.recommended_schema;
+                                const legacySchemas = page.schema_recommendation?.schemas;
+
+                                const schemas = batchSchema?.['@graph'] ||
+                                    (legacySchemas?.map(s => s.json_ld) || []);
+
+                                if (schemas.length === 0) return null;
+
+                                return (
+                                    <div className="border-t pt-4">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="text-sm font-medium text-muted-foreground">
+                                                Schema Components ({schemas.length})
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">
+                                                ← Scroll to see all • Click to expand →
+                                            </div>
+                                        </div>
+                                        <SchemaCarousel schemas={schemas} />
+                                    </div>
+                                );
+                            })()}
+
                             {/* Overall Strategy */}
                             {page.schema_recommendation?.overall_reasoning && (
-                                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                                     <div className="text-xs font-medium text-blue-800 mb-1">Overall SEO Strategy</div>
                                     <div className="text-sm text-blue-700">
                                         {page.schema_recommendation.overall_reasoning}
