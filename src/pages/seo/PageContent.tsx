@@ -784,49 +784,6 @@ ${schema?.overall_reasoning || 'N/A'}
                             disabled={!selectedSite}
                         />
 
-                        <ModelSelector
-                            value={selectedModel}
-                            onChange={setSelectedModel}
-                            disabled={generateMutation.isPending}
-                        />
-
-                        <Button
-                            onClick={() => page && generateMutation.mutate({ pageId: page.id, model: selectedModel })}
-                            disabled={!selectedPage || generateMutation.isPending}
-                            className="min-w-[120px]"
-                            variant="outline"
-                        >
-                            {generateMutation.isPending ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <Tag className="h-4 w-4 mr-2" />
-                                    Generate Meta
-                                </>
-                            )}
-                        </Button>
-
-                        <Button
-                            onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
-                            disabled={!selectedPage || generateSchemaMutation.isPending}
-                            className="min-w-[140px]"
-                        >
-                            {generateSchemaMutation.isPending ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="h-4 w-4 mr-2" />
-                                    Generate Schema
-                                </>
-                            )}
-                        </Button>
-
                         {/* Page Actions Separator */}
                         <div className="w-px h-8 bg-border" />
 
@@ -997,14 +954,40 @@ ${schema?.overall_reasoning || 'N/A'}
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-base">Meta Tags</CardTitle>
-                                    {page.recommendation_generated_at && (
-                                        <span className="text-xs text-muted-foreground">
-                                            Generated {new Date(page.recommendation_generated_at).toLocaleDateString()}
-                                        </span>
-                                    )}
+                                    <div>
+                                        <CardTitle className="text-base">Meta Tags</CardTitle>
+                                        {page.recommendation_generated_at && (
+                                            <span className="text-xs text-muted-foreground">
+                                                Generated {new Date(page.recommendation_generated_at).toLocaleDateString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <ModelSelector
+                                            value={selectedModel}
+                                            onChange={setSelectedModel}
+                                            disabled={generateMutation.isPending}
+                                        />
+                                        <Button
+                                            onClick={() => page && generateMutation.mutate({ pageId: page.id, model: selectedModel })}
+                                            disabled={generateMutation.isPending}
+                                            className="gap-2"
+                                        >
+                                            {generateMutation.isPending ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Generating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Tag className="h-4 w-4" />
+                                                    Generate Meta
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4 text-xs font-medium text-muted-foreground border-b pb-2">
+                                <div className="grid grid-cols-2 gap-4 text-xs font-medium text-muted-foreground border-b pb-2 mt-4">
                                     <div>BEFORE (Current)</div>
                                     <div>AFTER (Recommended)</div>
                                 </div>
@@ -1033,20 +1016,39 @@ ${schema?.overall_reasoning || 'N/A'}
                         <Card>
                             <CardHeader>
                                 <div className="flex items-center justify-between">
-                                    <CardTitle className="text-base">Schema Markup</CardTitle>
-                                    {page.schema_status && (
-                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
-                                            page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
-                                                'bg-yellow-100 text-yellow-800'
-                                            }`}>
-                                            {page.schema_status}
-                                            {page.schema_generated_at && (
-                                                <span className="ml-1 text-xs opacity-70">
-                                                    • {new Date(page.schema_generated_at).toLocaleDateString()}
-                                                </span>
-                                            )}
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-3">
+                                        <CardTitle className="text-base">Schema Markup</CardTitle>
+                                        {page.schema_status && (
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${page.schema_status === 'validated' ? 'bg-green-100 text-green-800' :
+                                                page.schema_status === 'skipped' ? 'bg-gray-100 text-gray-600' :
+                                                    'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                {page.schema_status}
+                                                {page.schema_generated_at && (
+                                                    <span className="ml-1 text-xs opacity-70">
+                                                        • {new Date(page.schema_generated_at).toLocaleDateString()}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <Button
+                                        onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
+                                        disabled={generateSchemaMutation.isPending}
+                                        className="gap-2"
+                                    >
+                                        {generateSchemaMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="h-4 w-4" />
+                                                Generate Schema
+                                            </>
+                                        )}
+                                    </Button>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6">
