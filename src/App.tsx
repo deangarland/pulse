@@ -13,6 +13,7 @@ import Schema from "./pages/admin/Schema"
 import Accounts from "./pages/admin/Accounts"
 import Users from "./pages/admin/Users"
 import Roles from "./pages/admin/Roles"
+import PageTemplates from "./pages/admin/PageTemplates"
 import Login from "./pages/Login"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 
@@ -51,6 +52,7 @@ function App() {
           <Route path="/admin/tokens" element={<TokenCostLog />} />
           <Route path="/admin/taxonomy" element={<Taxonomy />} />
           <Route path="/admin/schema" element={<Schema />} />
+          <Route path="/admin/templates" element={<PageTemplates />} />
           <Route path="/admin/accounts" element={<Accounts />} />
           <Route path="/admin/users" element={<Users />} />
           <Route path="/admin/roles" element={<Roles />} />
