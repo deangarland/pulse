@@ -14,8 +14,8 @@ import 'dotenv/config';
 let _supabase = null;
 function getSupabase() {
     if (!_supabase) {
-        const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+        const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
         if (!supabaseUrl || !supabaseKey) {
             throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set');
         }
