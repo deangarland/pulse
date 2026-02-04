@@ -206,7 +206,7 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
         }
 
         processContent()
-    }, [])
+    }, [html])
 
     // Sanitize and prepare HTML
     const sanitizedHtml = useMemo(() => {
