@@ -481,12 +481,26 @@ export default function PageContent() {
         return () => window.removeEventListener('accountChanged', handleAccountChange as EventListener)
     }, [searchParams, setSearchParams])
 
-    // Fetch site for selected account
-    const fetchSiteForAccount = async (accountId: string) => {
+    // Fetch site for selected account (cid is hs_account_id, need to get account UUID first)
+    const fetchSiteForAccount = async (hsAccountId: string) => {
+        // First, get the account UUID from hs_account_id
+        const { data: account, error: accountError } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('hs_account_id', hsAccountId)
+            .limit(1)
+            .single()
+
+        if (accountError || !account) {
+            console.error('Failed to find account for hs_account_id:', hsAccountId, accountError)
+            return
+        }
+
+        // Now query site_index with the account UUID
         const { data, error } = await supabase
             .from('site_index')
             .select('id')
-            .eq('account_id', accountId)
+            .eq('account_id', account.id)
             .limit(1)
             .single()
 
