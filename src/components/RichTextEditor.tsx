@@ -61,6 +61,13 @@ export function RichTextEditor({
         }
     }, [content, editor])
 
+    // Update editable state when prop changes
+    useEffect(() => {
+        if (editor) {
+            editor.setEditable(editable)
+        }
+    }, [editable, editor])
+
     const copyToClipboard = useCallback(() => {
         if (editor) {
             navigator.clipboard.writeText(editor.getHTML())

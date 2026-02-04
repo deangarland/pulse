@@ -19,6 +19,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Settings2, Download, RefreshCw, ChevronLeft, ChevronRight, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown, GripVertical } from "lucide-react"
 
+// Editable cell configuration
+export interface EditableConfig {
+    type: 'text' | 'number' | 'select' | 'date'
+    options?: { value: string; label: string }[]  // For select type
+    placeholder?: string
+}
+
 // Column definition
 export interface ColumnDef {
     key: string
@@ -28,6 +35,7 @@ export interface ColumnDef {
     minWidth?: number
     sortable?: boolean
     render?: (value: any, row: any) => React.ReactNode
+    editable?: EditableConfig  // Opt-in inline editing per column
 }
 
 // Sort state
@@ -55,6 +63,9 @@ interface DataTableProps {
     defaultSort?: SortState
     onSortChange?: (sort: SortState | null) => void
     serverSideSort?: boolean
+    // Inline editing (opt-in)
+    enableInlineEdit?: boolean
+    onCellUpdate?: (rowId: string, key: string, value: any) => Promise<void>
 }
 
 // Helper functions
@@ -169,6 +180,113 @@ function compareValues(a: any, b: any, direction: 'asc' | 'desc'): number {
     return strB.localeCompare(strA)
 }
 
+// EditableCell component for inline editing
+interface EditableCellProps {
+    value: any
+    rowId: string
+    columnKey: string
+    config: EditableConfig
+    onUpdate: (rowId: string, key: string, value: any) => Promise<void>
+    width: number
+}
+
+function EditableCell({ value, rowId, columnKey, config, onUpdate, width }: EditableCellProps) {
+    const [isEditing, setIsEditing] = useState(false)
+    const [editValue, setEditValue] = useState(value ?? '')
+    const [isSaving, setIsSaving] = useState(false)
+    const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null)
+
+    useEffect(() => {
+        if (isEditing && inputRef.current) {
+            inputRef.current.focus()
+            if (inputRef.current instanceof HTMLInputElement) {
+                inputRef.current.select()
+            }
+        }
+    }, [isEditing])
+
+    const handleSave = async () => {
+        if (editValue === value || (editValue === '' && value === null)) {
+            setIsEditing(false)
+            return
+        }
+        setIsSaving(true)
+        try {
+            const newValue = config.type === 'number'
+                ? (editValue === '' ? null : Number(editValue))
+                : editValue || null
+            await onUpdate(rowId, columnKey, newValue)
+            setIsEditing(false)
+        } catch (e) {
+            // Keep editing on error
+            console.error('Failed to save:', e)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault()
+            handleSave()
+        } else if (e.key === 'Escape') {
+            setEditValue(value ?? '')
+            setIsEditing(false)
+        }
+    }
+
+    if (!isEditing) {
+        return (
+            <div
+                className="truncate cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 min-h-[24px] flex items-center"
+                style={{ maxWidth: width }}
+                onClick={(e) => {
+                    e.stopPropagation()
+                    setIsEditing(true)
+                }}
+                title="Click to edit"
+            >
+                {value ?? <span className="text-muted-foreground italic">{config.placeholder || 'Click to edit'}</span>}
+            </div>
+        )
+    }
+
+    if (config.type === 'select' && config.options) {
+        return (
+            <select
+                ref={inputRef as React.RefObject<HTMLSelectElement>}
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSave}
+                onKeyDown={handleKeyDown}
+                disabled={isSaving}
+                className="w-full h-7 px-2 text-sm border rounded bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                style={{ maxWidth: width }}
+            >
+                <option value="">-</option>
+                {config.options.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+            </select>
+        )
+    }
+
+    return (
+        <input
+            ref={inputRef as React.RefObject<HTMLInputElement>}
+            type={config.type === 'number' ? 'number' : config.type === 'date' ? 'date' : 'text'}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            disabled={isSaving}
+            placeholder={config.placeholder}
+            className="w-full h-7 px-2 text-sm border rounded bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+            style={{ maxWidth: width }}
+        />
+    )
+}
+
 export function DataTable({
     data,
     columns,
@@ -186,7 +304,9 @@ export function DataTable({
     toolbar,
     defaultSort,
     onSortChange,
-    serverSideSort = false
+    serverSideSort = false,
+    enableInlineEdit = false,
+    onCellUpdate
 }: DataTableProps) {
     // Sort state
     const [sort, setSort] = useState<SortState | null>(defaultSort || null)
@@ -503,9 +623,20 @@ export function DataTable({
                                     >
                                         {displayColumns.map((col) => (
                                             <TableCell key={col.key} style={{ width: columnWidths[col.key] || 150 }}>
-                                                <div className="truncate" style={{ maxWidth: columnWidths[col.key] || 150 }}>
-                                                    {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '-')}
-                                                </div>
+                                                {enableInlineEdit && col.editable && onCellUpdate ? (
+                                                    <EditableCell
+                                                        value={row[col.key]}
+                                                        rowId={row.id}
+                                                        columnKey={col.key}
+                                                        config={col.editable}
+                                                        onUpdate={onCellUpdate}
+                                                        width={columnWidths[col.key] || 150}
+                                                    />
+                                                ) : (
+                                                    <div className="truncate" style={{ maxWidth: columnWidths[col.key] || 150 }}>
+                                                        {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '-')}
+                                                    </div>
+                                                )}
                                             </TableCell>
                                         ))}
                                         {rowActions && (

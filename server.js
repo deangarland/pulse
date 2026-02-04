@@ -2103,12 +2103,23 @@ ${sectionContent}` : `The section is MISSING. Generate new content for it based 
 
 ${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
 
+IMPORTANT: Your enhanced_content MUST be properly formatted HTML, not plain text. Use these HTML tags:
+- <h1> for main titles
+- <h2> for section headings  
+- <h3> for sub-headings
+- <p> for paragraphs
+- <strong> for emphasis
+- <ul>/<li> for lists
+
+Example enhanced_content format:
+"<h2>Transform Your Skin with AQUAGOLD</h2><p>Experience the revolutionary <strong>micro-channeling treatment</strong> that delivers customized serums directly into your skin for radiant, youthful results.</p><h3>Why Choose AQUAGOLD?</h3><ul><li>Painless application</li><li>Custom cocktail of ingredients</li><li>Immediate visible results</li></ul>"
+
 Respond in this JSON format:
 {
     "section_id": "${sectionId}",
     "section_name": "${sectionDef.name}",
     "original_content": "The original content if provided",
-    "enhanced_content": "Your improved HTML content for this section",
+    "enhanced_content": "Your improved HTML content with proper tags like <h2>, <p>, <ul>, etc.",
     "is_new_section": ${!sectionContent},
     "implementation_notes": "Clear instructions on where and how to implement this content",
     "changes_made": ["List of specific improvements made"],
