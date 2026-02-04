@@ -17,7 +17,7 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, FileText, Tag, Loader2, Wand2 } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Tags } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 
@@ -619,6 +619,50 @@ export default function PageContent() {
         }
     })
 
+    // Re-crawl single page mutation
+    const recrawlMutation = useMutation({
+        mutationFn: async (pageId: string) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/pages/${pageId}/recrawl`, {
+                method: 'POST'
+            })
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to re-crawl page')
+            }
+            return response.json()
+        },
+        onSuccess: () => {
+            toast.success('Page re-crawled!')
+            refetchPage()
+        },
+        onError: (error: Error) => {
+            toast.error('Re-crawl failed', { description: error.message })
+        }
+    })
+
+    // Re-classify single page mutation
+    const classifyMutation = useMutation({
+        mutationFn: async (pageId: string) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/pages/${pageId}/classify`, {
+                method: 'POST'
+            })
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to classify page')
+            }
+            return response.json()
+        },
+        onSuccess: (data) => {
+            toast.success(`Page classified as: ${data.page_type}`)
+            refetchPage()
+        },
+        onError: (error: Error) => {
+            toast.error('Classification failed', { description: error.message })
+        }
+    })
+
     // Export functions
     const exportAsMarkdown = useCallback(() => {
         if (!page) return
@@ -798,6 +842,39 @@ ${schema?.overall_reasoning || 'N/A'}
                                     <Sparkles className="h-4 w-4 mr-2" />
                                     Generate Schema
                                 </>
+                            )}
+                        </Button>
+
+                        {/* Page Actions Separator */}
+                        <div className="w-px h-8 bg-border" />
+
+                        {/* Re-crawl Button */}
+                        <Button
+                            onClick={() => page && recrawlMutation.mutate(page.id)}
+                            disabled={!selectedPage || recrawlMutation.isPending}
+                            variant="outline"
+                            size="sm"
+                            title="Re-crawl this page"
+                        >
+                            {recrawlMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <RefreshCw className="h-4 w-4" />
+                            )}
+                        </Button>
+
+                        {/* Re-classify Button */}
+                        <Button
+                            onClick={() => page && classifyMutation.mutate(page.id)}
+                            disabled={!selectedPage || classifyMutation.isPending}
+                            variant="outline"
+                            size="sm"
+                            title="Re-classify this page"
+                        >
+                            {classifyMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Tags className="h-4 w-4" />
                             )}
                         </Button>
                     </div>

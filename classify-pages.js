@@ -595,3 +595,35 @@ if (isMainModule) {
         });
     }
 }
+
+/**
+ * Classify a single page (for API use)
+ * Skips site analysis and directly classifies the page
+ */
+export async function classifySinglePage(pageId, page) {
+    try {
+        // Use hybrid classifier (heuristics + LLM)
+        const pageType = await classifyPageType({
+            id: pageId,
+            path: new URL(page.url).pathname,
+            title: page.title,
+            meta_tags: { description: page.meta_tags?.description || '' },
+            main_content: page.main_content || '',
+            cleaned_html: page.cleaned_html || ''
+        })
+
+        // Save to database
+        const { error } = await getSupabase()
+            .from('page_index')
+            .update({ page_type: pageType })
+            .eq('id', pageId)
+
+        if (error) {
+            return { success: false, error: error.message }
+        }
+
+        return { success: true, page_type: pageType }
+    } catch (error) {
+        return { success: false, error: error.message }
+    }
+}

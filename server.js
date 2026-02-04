@@ -171,7 +171,7 @@ async function getPrompt(promptName) {
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('prompts')
             .select('system_prompt, default_model')
             .eq('name', promptName)
@@ -275,7 +275,7 @@ app.post('/api/generate-recommendations', async (req, res) => {
         }
 
         // Fetch page data
-        const { data: page, error: fetchError } = await supabase
+        const { data: page, error: fetchError } = await getSupabase()
             .from('page_index')
             .select('*')
             .eq('id', pageId)
@@ -384,7 +384,7 @@ app.post('/api/generate-recommendations', async (req, res) => {
         })
 
         // Save to database
-        const { error: updateError } = await supabase
+        const { error: updateError } = await getSupabase()
             .from('page_index')
             .update({
                 meta_recommendation: recommendations.meta,
@@ -536,7 +536,7 @@ app.post('/api/generate-schema', async (req, res) => {
         }
 
         // 1. Fetch page data
-        const { data: page, error: pageError } = await supabase
+        const { data: page, error: pageError } = await getSupabase()
             .from('page_index')
             .select('id, site_id, path, url, title, meta_tags, headings, main_content, html_content, page_type')
             .eq('id', pageId)
@@ -551,7 +551,7 @@ app.post('/api/generate-schema', async (req, res) => {
         }
 
         // 2. Fetch schema config from schema_org table
-        const { data: schemaConfig, error: configError } = await supabase
+        const { data: schemaConfig, error: configError } = await getSupabase()
             .from('schema_org')
             .select('*')
             .eq('page_type', page.page_type)
@@ -564,7 +564,7 @@ app.post('/api/generate-schema', async (req, res) => {
         // Check tier - skip LOW, optionally skip MEDIUM
         if (schemaConfig.tier === 'LOW') {
             // Save as skipped
-            await supabase
+            await getSupabase()
                 .from('page_index')
                 .update({
                     schema_status: 'skipped',
@@ -582,7 +582,7 @@ app.post('/api/generate-schema', async (req, res) => {
         }
 
         if (schemaConfig.tier === 'MEDIUM' && !includeMedium) {
-            await supabase
+            await getSupabase()
                 .from('page_index')
                 .update({
                     schema_status: 'skipped',
@@ -600,7 +600,7 @@ app.post('/api/generate-schema', async (req, res) => {
         }
 
         // 3. Fetch site data for provider info
-        const { data: site } = await supabase
+        const { data: site } = await getSupabase()
             .from('site_index')
             .select('url, site_profile, account_id')
             .eq('id', page.site_id)
@@ -781,7 +781,7 @@ app.post('/api/generate-schema', async (req, res) => {
         // 6. Save to recommended_schema column
         const requestDurationMs = Date.now() - startTime
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await getSupabase()
             .from('page_index')
             .update({
                 recommended_schema: wrappedSchema,
@@ -880,7 +880,7 @@ app.get('/api/link-plan', async (req, res) => {
     try {
         const { account_id, status, quarter, year } = req.query
 
-        let query = supabase
+        let query = getSupabase()
             .from('link_plan')
             .select(`
                 *,
@@ -940,7 +940,7 @@ app.post('/api/link-plan', async (req, res) => {
             return res.status(400).json({ error: 'account_id and target_month are required' })
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('link_plan')
             .insert({
                 account_id,
@@ -977,7 +977,7 @@ app.put('/api/link-plan/:id', async (req, res) => {
         // Add updated_at timestamp
         updates.updated_at = new Date().toISOString()
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('link_plan')
             .update(updates)
             .eq('id', id)
@@ -1000,7 +1000,7 @@ app.delete('/api/link-plan/:id', async (req, res) => {
     try {
         const { id } = req.params
 
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('link_plan')
             .delete()
             .eq('id', id)
@@ -1031,7 +1031,7 @@ app.get('/api/admin/users', async (req, res) => {
         }
 
         // Get user roles
-        const { data: userRoles, error: rolesError } = await supabase
+        const { data: userRoles, error: rolesError } = await getSupabase()
             .from('user_roles')
             .select('user_id, roles(id, name, description)')
 
@@ -1040,7 +1040,7 @@ app.get('/api/admin/users', async (req, res) => {
         }
 
         // Get user accounts
-        const { data: userAccounts, error: accountsError } = await supabase
+        const { data: userAccounts, error: accountsError } = await getSupabase()
             .from('user_accounts')
             .select('user_id, account_id, accounts(id, account_name)')
 
@@ -1103,7 +1103,7 @@ app.post('/api/admin/users', async (req, res) => {
 
         // Assign role if provided
         if (role_id) {
-            const { error: roleError } = await supabase
+            const { error: roleError } = await getSupabase()
                 .from('user_roles')
                 .insert({ user_id: userId, role_id })
 
@@ -1119,7 +1119,7 @@ app.post('/api/admin/users', async (req, res) => {
                 account_id
             }))
 
-            const { error: accountError } = await supabase
+            const { error: accountError } = await getSupabase()
                 .from('user_accounts')
                 .insert(accountInserts)
 
@@ -1170,7 +1170,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 // GET /api/admin/roles - List all roles with permissions
 app.get('/api/admin/roles', async (req, res) => {
     try {
-        const { data: roles, error: rolesError } = await supabase
+        const { data: roles, error: rolesError } = await getSupabase()
             .from('roles')
             .select('*')
             .order('name')
@@ -1180,7 +1180,7 @@ app.get('/api/admin/roles', async (req, res) => {
         }
 
         // Get role_permissions mapping
-        const { data: rolePermissions, error: rpError } = await supabase
+        const { data: rolePermissions, error: rpError } = await getSupabase()
             .from('role_permissions')
             .select('role_id, permission_id, permissions(id, name, description)')
 
@@ -1214,7 +1214,7 @@ app.put('/api/admin/roles/:id/permissions', async (req, res) => {
         }
 
         // Delete existing permissions
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await getSupabase()
             .from('role_permissions')
             .delete()
             .eq('role_id', id)
@@ -1230,7 +1230,7 @@ app.put('/api/admin/roles/:id/permissions', async (req, res) => {
                 permission_id
             }))
 
-            const { error: insertError } = await supabase
+            const { error: insertError } = await getSupabase()
                 .from('role_permissions')
                 .insert(inserts)
 
@@ -1249,7 +1249,7 @@ app.put('/api/admin/roles/:id/permissions', async (req, res) => {
 // GET /api/admin/permissions - List all permissions
 app.get('/api/admin/permissions', async (req, res) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('permissions')
             .select('*')
             .order('name')
@@ -1270,7 +1270,7 @@ app.get('/api/admin/users/:id/permissions', async (req, res) => {
     try {
         const { id } = req.params
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('user_permission_overrides')
             .select('*, permissions(id, name, description)')
             .eq('user_id', id)
@@ -1297,7 +1297,7 @@ app.put('/api/admin/users/:id/permissions', async (req, res) => {
         }
 
         // Delete existing overrides for this user (global only, not account-specific)
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await getSupabase()
             .from('user_permission_overrides')
             .delete()
             .eq('user_id', id)
@@ -1316,7 +1316,7 @@ app.put('/api/admin/users/:id/permissions', async (req, res) => {
                 account_id: null
             }))
 
-            const { error: insertError } = await supabase
+            const { error: insertError } = await getSupabase()
                 .from('user_permission_overrides')
                 .insert(inserts)
 
@@ -1360,7 +1360,7 @@ app.get('/api/sites', async (req, res) => {
     try {
         const { account_id, status } = req.query
 
-        let query = supabase
+        let query = getSupabase()
             .from('site_index')
             .select(`
                 *,
@@ -1407,7 +1407,7 @@ app.post('/api/sites', async (req, res) => {
         }
 
         // Check if site with this domain already exists
-        const { data: existing } = await supabase
+        const { data: existing } = await getSupabase()
             .from('site_index')
             .select('id, domain, crawl_status')
             .eq('domain', domain)
@@ -1416,7 +1416,7 @@ app.post('/api/sites', async (req, res) => {
         let siteData
         if (existing) {
             // Re-crawl existing site (pages will be upserted, preserving user-generated content)
-            const { data, error } = await supabase
+            const { data, error } = await getSupabase()
                 .from('site_index')
                 .update({
                     url,
@@ -1437,7 +1437,7 @@ app.post('/api/sites', async (req, res) => {
             siteData = { ...data, updated: true }
         } else {
             // Create new site
-            const { data, error } = await supabase
+            const { data, error } = await getSupabase()
                 .from('site_index')
                 .insert({
                     url,
@@ -1484,7 +1484,7 @@ app.get('/api/debug-db', async (req, res) => {
         let writeResult = null;
         if (req.query.action === 'test_write') {
             const testDomain = `test-write-${Date.now()}.com`
-            const { data, error } = await supabase
+            const { data, error } = await getSupabase()
                 .from('site_index')
                 .upsert({
                     domain: testDomain,
@@ -1500,7 +1500,7 @@ app.get('/api/debug-db', async (req, res) => {
         // Optional: Find Site
         let findResult = null;
         if (req.query.action === 'find_site' && req.query.query) {
-            const { data, error } = await supabase
+            const { data, error } = await getSupabase()
                 .from('site_index')
                 .select('*')
                 .ilike('domain', `%${req.query.query}%`)
@@ -1516,7 +1516,7 @@ app.get('/api/debug-db', async (req, res) => {
                 const domain = new URL(req.query.url).hostname;
                 result.logs.push(`Domain: ${domain}`);
 
-                const { data: existing, error: existError } = await supabase
+                const { data: existing, error: existError } = await getSupabase()
                     .from('site_index')
                     .select('id, domain')
                     .eq('domain', domain)
@@ -1526,7 +1526,7 @@ app.get('/api/debug-db', async (req, res) => {
 
                 if (existing) {
                     result.logs.push('Path: UPDATE');
-                    const { data, error } = await supabase
+                    const { data, error } = await getSupabase()
                         .from('site_index')
                         .update({ crawl_status: 'in_progress', updated_at: new Date().toISOString() })
                         .eq('id', existing.id)
@@ -1536,7 +1536,7 @@ app.get('/api/debug-db', async (req, res) => {
                     result.error = error?.message;
                 } else {
                     result.logs.push('Path: INSERT');
-                    const { data, error } = await supabase
+                    const { data, error } = await getSupabase()
                         .from('site_index')
                         .insert({
                             url: req.query.url,
@@ -1570,7 +1570,7 @@ app.get('/api/debug-db', async (req, res) => {
             }
         }
 
-        const { data: sites, error } = await supabase
+        const { data: sites, error } = await getSupabase()
             .from('site_index')
             .select('id, domain, created_at')
             .order('created_at', { ascending: false })
@@ -1601,7 +1601,7 @@ app.get('/api/sites/:id/status', async (req, res) => {
     try {
         const { id } = req.params
 
-        const { data: site, error } = await supabase
+        const { data: site, error } = await getSupabase()
             .from('site_index')
             .select('id, domain, crawl_status, pages_crawled, page_limit, current_url, updated_at')
             .eq('id', id)
@@ -1641,7 +1641,7 @@ app.put('/api/sites/:id', async (req, res) => {
         if (account_id !== undefined) updates.account_id = account_id || null
         if (crawl_status) updates.crawl_status = crawl_status
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('site_index')
             .update(updates)
             .eq('id', id)
@@ -1668,7 +1668,7 @@ app.delete('/api/sites/:id', async (req, res) => {
         await getSupabase().from('page_index').delete().eq('site_id', id)
         await getSupabase().from('crawl_resources').delete().eq('site_id', id)
 
-        const { error } = await supabase
+        const { error } = await getSupabase()
             .from('site_index')
             .delete()
             .eq('id', id)
@@ -1683,6 +1683,110 @@ app.delete('/api/sites/:id', async (req, res) => {
         res.status(500).json({ error: error.message })
     }
 })
+
+// ============================================================
+// PAGE-LEVEL ACTIONS
+// ============================================================
+
+// POST /api/pages/:id/recrawl - Re-crawl a single page
+app.post('/api/pages/:id/recrawl', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        // Get page info
+        const { data: page, error: pageError } = await getSupabase()
+            .from('page_index')
+            .select('url, site_id')
+            .eq('id', id)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        console.log(`🔄 Re-crawling page: ${page.url}`)
+
+        // Fetch the page
+        const response = await fetch(page.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PulseCrawler/1.0)' },
+            timeout: 30000
+        })
+
+        if (!response.ok) {
+            return res.status(response.status).json({ error: `Failed to fetch: ${response.status}` })
+        }
+
+        const html = await response.text()
+
+        // Import and use the parsing/cleaning functions from crawl-site.js
+        const { parsePage, cleanHtml } = await import('./crawl-site.js')
+
+        const parsed = parsePage(html, page.url)
+        const cleanedHtml = cleanHtml(html)
+
+        // Update the page in database
+        const { error: updateError } = await getSupabase()
+            .from('page_index')
+            .update({
+                title: parsed.title,
+                html_content: html,
+                cleaned_html: cleanedHtml,
+                main_content: parsed.main_content || null,
+                headings: parsed.headings || null,
+                meta_tags: { description: parsed.meta_description } || null,
+                links_internal: parsed.internal_links || null,
+                links_external: parsed.external_links || null,
+                crawled_at: new Date().toISOString()
+            })
+            .eq('id', id)
+
+        if (updateError) {
+            return res.status(500).json({ error: updateError.message })
+        }
+
+        console.log(`✅ Re-crawled: ${page.url}`)
+        res.json({ success: true, message: 'Page re-crawled successfully' })
+    } catch (error) {
+        console.error('Re-crawl page error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/pages/:id/classify - Re-classify a single page
+app.post('/api/pages/:id/classify', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        // Get page info
+        const { data: page, error: pageError } = await getSupabase()
+            .from('page_index')
+            .select('url, title, site_id, main_content, headings')
+            .eq('id', id)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        console.log(`🏷️ Classifying page: ${page.url}`)
+
+        // Import classifier
+        const { classifySinglePage } = await import('./classify-pages.js')
+
+        const result = await classifySinglePage(id, page)
+
+        if (!result.success) {
+            return res.status(500).json({ error: result.error || 'Classification failed' })
+        }
+
+        console.log(`✅ Classified as: ${result.page_type}`)
+        res.json({ success: true, page_type: result.page_type })
+    } catch (error) {
+        console.error('Classify page error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'dist')))

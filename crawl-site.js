@@ -604,3 +604,6 @@ if (isMainModule) {
         .then(() => process.exit(0))
         .catch(() => process.exit(1))
 }
+
+// Export functions for use by server.js
+export { runCrawl, parsePage, cleanHtml }
