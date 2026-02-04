@@ -74,6 +74,14 @@ function cleanHtml(rawHtml) {
     // Remove navigation and non-content elements
     $('nav, header, footer, aside, noscript, iframe, form, [role="navigation"], [role="banner"], [role="contentinfo"], .nav, .navigation, .header, .footer, .sidebar').remove()
 
+    // Remove images with base64 data URIs (they bloat the content)
+    $('img').each((_, el) => {
+        const src = $(el).attr('src') || ''
+        if (src.startsWith('data:')) {
+            $(el).remove()
+        }
+    })
+
     // Try to find main content area first
     let mainContent = $('main, article, [role="main"], .content, #content, .main-content, #main').first()
 
@@ -89,6 +97,14 @@ function cleanHtml(rawHtml) {
     $content('*').contents().filter(function () {
         return this.type === 'comment'
     }).remove()
+
+    // Remove remaining base64 images in the content area too
+    $content('img').each((_, el) => {
+        const src = $content(el).attr('src') || ''
+        if (src.startsWith('data:')) {
+            $content(el).remove()
+        }
+    })
 
     // Strip most attributes but keep structural ones
     $content('*').each((_, el) => {
@@ -399,7 +415,6 @@ async function savePage(siteId, url, data) {
         cleaned_html: data.cleanedHtml,
         main_content: data.main_content || null,
         headings: data.headings || null,
-        structured_content: data.structured_content || null,
         meta_tags: { description: data.meta_description } || null,
         links_internal: data.internal_links || null,
         links_external: data.external_links || null,
