@@ -16,11 +16,19 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-// Supabase client
-const supabase = createClient(
-    process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY
-)
+// Lazy-initialized Supabase client
+let _supabase = null;
+function getSupabase() {
+    if (!_supabase) {
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+        const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set');
+        }
+        _supabase = createClient(supabaseUrl, supabaseKey);
+    }
+    return _supabase;
+}
 
 // OpenAI client (optional - only needed for generation endpoints)
 let openai = null
@@ -92,7 +100,7 @@ async function logAIUsage({
     try {
         const { inputCostCents, outputCostCents } = calculateCost(model, inputTokens, outputTokens)
 
-        await supabase.from('ai_usage_logs').insert({
+        await getSupabase().from('ai_usage_logs').insert({
             action,
             page_id: pageId,
             page_url: pageUrl,
@@ -1016,7 +1024,7 @@ app.delete('/api/link-plan/:id', async (req, res) => {
 app.get('/api/admin/users', async (req, res) => {
     try {
         // Get users from auth.users via RPC
-        const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers()
+        const { data: authUsers, error: authError } = await getSupabase().auth.admin.listUsers()
 
         if (authError) {
             return res.status(500).json({ error: authError.message })
@@ -1070,7 +1078,7 @@ app.post('/api/admin/users', async (req, res) => {
 
         if (password) {
             // Create user directly with password (no email sent)
-            const result = await supabase.auth.admin.createUser({
+            const result = await getSupabase().auth.admin.createUser({
                 email,
                 password,
                 email_confirm: true
@@ -1080,7 +1088,7 @@ app.post('/api/admin/users', async (req, res) => {
         } else {
             // Invite user via email
             const appUrl = process.env.APP_URL || 'https://pulse.deangarland.com'
-            const result = await supabase.auth.admin.inviteUserByEmail(email, {
+            const result = await getSupabase().auth.admin.inviteUserByEmail(email, {
                 redirectTo: `${appUrl}/login`
             })
             authData = result.data
@@ -1137,16 +1145,16 @@ app.delete('/api/admin/users/:id', async (req, res) => {
         const { id } = req.params
 
         // Delete from user_accounts first (foreign key constraint)
-        await supabase.from('user_accounts').delete().eq('user_id', id)
+        await getSupabase().from('user_accounts').delete().eq('user_id', id)
 
         // Delete from user_roles
-        await supabase.from('user_roles').delete().eq('user_id', id)
+        await getSupabase().from('user_roles').delete().eq('user_id', id)
 
         // Delete from user_permission_overrides
-        await supabase.from('user_permission_overrides').delete().eq('user_id', id)
+        await getSupabase().from('user_permission_overrides').delete().eq('user_id', id)
 
         // Delete from Supabase Auth
-        const { error: authError } = await supabase.auth.admin.deleteUser(id)
+        const { error: authError } = await getSupabase().auth.admin.deleteUser(id)
 
         if (authError) {
             return res.status(500).json({ error: authError.message })
@@ -1657,8 +1665,8 @@ app.delete('/api/sites/:id', async (req, res) => {
         const { id } = req.params
 
         // Delete related data first (pages, resources, analyses)
-        await supabase.from('page_index').delete().eq('site_id', id)
-        await supabase.from('crawl_resources').delete().eq('site_id', id)
+        await getSupabase().from('page_index').delete().eq('site_id', id)
+        await getSupabase().from('crawl_resources').delete().eq('site_id', id)
 
         const { error } = await supabase
             .from('site_index')

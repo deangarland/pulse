@@ -10,10 +10,19 @@
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
 
-const supabase = createClient(
-    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY
-);
+// Lazy-initialized Supabase client
+let _supabase = null;
+function getSupabase() {
+    if (!_supabase) {
+        const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set');
+        }
+        _supabase = createClient(supabaseUrl, supabaseKey);
+    }
+    return _supabase;
+}
 
 /**
  * Pre-flight check - verify all required data exists before generation
@@ -21,7 +30,7 @@ const supabase = createClient(
  */
 export async function preflightCheck(schemaType, siteId, pageId = null) {
     // 1. Fetch template with data_sources
-    const { data: template, error: templateError } = await supabase
+    const { data: template, error: templateError } = await getSupabase()
         .from('schema_templates')
         .select('schema_type, required_fields, data_sources')
         .eq('schema_type', schemaType)
@@ -35,7 +44,7 @@ export async function preflightCheck(schemaType, siteId, pageId = null) {
     }
 
     // 2. Fetch site data
-    const { data: site } = await supabase
+    const { data: site } = await getSupabase()
         .from('site_index')
         .select('url, site_profile')
         .eq('id', siteId)
@@ -44,7 +53,7 @@ export async function preflightCheck(schemaType, siteId, pageId = null) {
     // 3. Fetch page data if provided
     let page = null;
     if (pageId) {
-        const { data: pageData } = await supabase
+        const { data: pageData } = await getSupabase()
             .from('page_index')
             .select('*')
             .eq('id', pageId)
@@ -53,7 +62,7 @@ export async function preflightCheck(schemaType, siteId, pageId = null) {
     }
 
     // 4. Fetch primary location
-    const { data: locations } = await supabase
+    const { data: locations } = await getSupabase()
         .from('locations')
         .select('*')
         .eq('account_id', site?.site_profile?.account_id || siteId)
@@ -218,7 +227,7 @@ export async function resolveAllDataSources(schemaType, siteId, pageId) {
  * Save individual schema to page_schemas table
  */
 export async function savePageSchema(pageId, schemaType, schemaJson, method = 'template', validationResult = null) {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
         .from('page_schemas')
         .upsert({
             page_id: pageId,
@@ -245,7 +254,7 @@ export async function savePageSchema(pageId, schemaType, schemaJson, method = 't
  * Fetch all schemas for a page and assemble into @graph
  */
 export async function assembleGraphForPage(pageId, siteUrl) {
-    const { data: schemas, error } = await supabase
+    const { data: schemas, error } = await getSupabase()
         .from('page_schemas')
         .select('schema_type, schema_json, is_valid')
         .eq('page_id', pageId);
@@ -277,7 +286,7 @@ export async function updateCachedSchema(pageId, siteUrl) {
 
     if (!graph) return { success: false, error: 'No valid schemas' };
 
-    const { error } = await supabase
+    const { error } = await getSupabase()
         .from('page_index')
         .update({
             recommended_schema: graph,
