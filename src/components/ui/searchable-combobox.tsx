@@ -69,7 +69,7 @@ export function SearchableCombobox({
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command>
+                <Command loop>
                     <CommandInput placeholder={searchPlaceholder} />
                     <CommandList className="max-h-[300px]">
                         <CommandEmpty>{emptyText}</CommandEmpty>
@@ -78,10 +78,14 @@ export function SearchableCombobox({
                                 <CommandItem
                                     key={option.value}
                                     value={option.label}
+                                    keywords={option.sublabel ? [option.sublabel] : undefined}
                                     onSelect={() => {
+                                        // Ensure value changes before closing popover
                                         onValueChange(option.value)
-                                        setOpen(false)
+                                        // Use setTimeout to ensure state update completes
+                                        setTimeout(() => setOpen(false), 0)
                                     }}
+                                    className="cursor-pointer"
                                 >
                                     <Check
                                         className={cn(
