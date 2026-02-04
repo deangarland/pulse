@@ -246,6 +246,23 @@ export default function LinkPlan() {
         }
     })
 
+    // Inline cell update handler
+    const handleCellUpdate = async (rowId: string, key: string, value: any) => {
+        const apiUrl = import.meta.env.VITE_API_URL || ''
+        const response = await fetch(`${apiUrl}/api/link-plan/${rowId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [key]: value })
+        })
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}))
+            toast.error(err.error || 'Failed to update')
+            throw new Error('Failed to update')
+        }
+        queryClient.invalidateQueries({ queryKey: ['link-plans'] })
+        toast.success('Updated')
+    }
+
     function resetForm() {
         setFormData({
             target_month: '',
@@ -355,7 +372,7 @@ export default function LinkPlan() {
             defaultVisible: true,
             defaultWidth: 150,
             sortable: true,
-            render: (value) => value || <span className="text-muted-foreground">TBD</span>
+            editable: { type: 'text', placeholder: 'TBD' }
         },
         {
             key: 'publisher_da',
@@ -363,7 +380,7 @@ export default function LinkPlan() {
             defaultVisible: true,
             defaultWidth: 60,
             sortable: true,
-            render: (value) => value || '-'
+            editable: { type: 'number', placeholder: '0-100' }
         },
         {
             key: 'page_authority',
@@ -371,7 +388,7 @@ export default function LinkPlan() {
             defaultVisible: true,
             defaultWidth: 60,
             sortable: true,
-            render: (value) => value || '-'
+            editable: { type: 'number', placeholder: '0-100' }
         },
         {
             key: 'destination_url',
@@ -404,7 +421,7 @@ export default function LinkPlan() {
             defaultVisible: true,
             defaultWidth: 150,
             sortable: true,
-            render: (value) => value || '-'
+            editable: { type: 'text', placeholder: 'Anchor text' }
         },
         {
             key: 'link_type',
@@ -694,6 +711,8 @@ export default function LinkPlan() {
                         toolbar={filterToolbar}
                         onRefresh={() => refetch()}
                         defaultSort={{ key: 'target_month', direction: 'desc' }}
+                        enableInlineEdit={true}
+                        onCellUpdate={handleCellUpdate}
                     />
                 </CardContent>
             </Card>
