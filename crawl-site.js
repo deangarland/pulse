@@ -120,12 +120,20 @@ function cleanHtml(rawHtml) {
     let cleaned = $content.html()
     if (!cleaned) return ''
 
-    // Normalize whitespace but preserve structure
+    // Normalize whitespace while preserving structure for block elements
+    // Add newlines after block-level closing tags to maintain visual structure
+    const blockTags = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ul', 'ol', 'section', 'article', 'figure', 'figcaption', 'blockquote']
+    blockTags.forEach(tag => {
+        const regex = new RegExp(`</${tag}>`, 'gi')
+        cleaned = cleaned.replace(regex, `</${tag}>\n`)
+    })
+
+    // Collapse multiple spaces/newlines into single space (but keep the newlines we added)
     cleaned = cleaned
-        .replace(/\s+/g, ' ')
-        .replace(/>\s+</g, '><')
-        .replace(/\s+>/g, '>')
-        .replace(/<\s+/g, '<')
+        .replace(/[ \t]+/g, ' ')           // Collapse horizontal whitespace
+        .replace(/\n\s*\n/g, '\n')         // Collapse multiple newlines
+        .replace(/>\s+</g, '>\n<')         // Ensure tags have newlines between them
+        .replace(/^\s+|\s+$/gm, '')        // Trim each line
         .trim()
 
     if (cleaned.length > MAX_CLEANED_HTML_LENGTH) {

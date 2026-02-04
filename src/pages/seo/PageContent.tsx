@@ -445,9 +445,16 @@ export default function PageContent() {
         setSearchParams(searchParams, { replace: true })
     }, [searchParams, setSearchParams])
 
-    // Listen for global account changes
+    // Listen for global account changes and URL params
     useEffect(() => {
-        // Load initial account from localStorage
+        // First priority: URL params (for shareable links)
+        const cidFromUrl = searchParams.get('cid')
+        if (cidFromUrl) {
+            fetchSiteForAccount(cidFromUrl)
+            return
+        }
+
+        // Fallback: localStorage
         const savedAccountId = localStorage.getItem('selectedAccountId')
         if (savedAccountId) {
             fetchSiteForAccount(savedAccountId)
@@ -458,15 +465,20 @@ export default function PageContent() {
             const accountId = e.detail
             if (accountId && accountId !== 'all') {
                 fetchSiteForAccount(accountId)
+                // Update URL with cid
+                searchParams.set('cid', accountId)
+                setSearchParams(searchParams, { replace: true })
             } else {
                 setSelectedSite('')
                 setSelectedPage('')
+                searchParams.delete('cid')
+                setSearchParams(searchParams, { replace: true })
             }
         }
 
         window.addEventListener('accountChanged', handleAccountChange as EventListener)
         return () => window.removeEventListener('accountChanged', handleAccountChange as EventListener)
-    }, [])
+    }, [searchParams, setSearchParams])
 
     // Fetch site for selected account
     const fetchSiteForAccount = async (accountId: string) => {
