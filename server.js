@@ -1788,6 +1788,285 @@ app.post('/api/pages/:id/classify', async (req, res) => {
 })
 
 
+// ============================================
+// PHASE 3: AI Content Enhancement APIs
+// ============================================
+
+// POST /api/analyze-content - Analyze page content against template
+app.post('/api/analyze-content', async (req, res) => {
+    try {
+        const { pageId, pageType } = req.body
+
+        if (!pageId) {
+            return res.status(400).json({ error: 'pageId is required' })
+        }
+
+        // Get page content
+        const { data: page, error: pageError } = await getSupabase()
+            .from('page_index')
+            .select('id, url, title, page_type, cleaned_html, headings, main_content')
+            .eq('id', pageId)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        // Determine page type (use provided or page's type)
+        const effectivePageType = pageType || page.page_type
+
+        if (!effectivePageType) {
+            return res.status(400).json({ error: 'Page type is required (either provide pageType or ensure page has page_type set)' })
+        }
+
+        // Get template for this page type
+        const { data: template, error: templateError } = await getSupabase()
+            .from('page_content_templates')
+            .select('*')
+            .eq('page_type', effectivePageType)
+            .single()
+
+        if (templateError || !template) {
+            return res.status(404).json({ error: `No template found for page type: ${effectivePageType}` })
+        }
+
+        // Build analysis prompt
+        const sectionsList = template.sections.map(s =>
+            `- ${s.id}: "${s.name}" (${s.required ? 'required' : 'optional'}) - ${s.description}`
+        ).join('\n')
+
+        const analysisPrompt = `Analyze this webpage content and identify which expected sections are present or missing.
+
+EXPECTED SECTIONS FOR ${effectivePageType.toUpperCase()} PAGE:
+${sectionsList}
+
+PAGE CONTENT:
+Title: ${page.title || 'No title'}
+URL: ${page.url}
+Headings: ${JSON.stringify(page.headings || {})}
+
+HTML Content:
+${(page.cleaned_html || page.main_content || '').substring(0, 15000)}
+
+For each expected section, determine:
+1. Is it present? (found: true/false)
+2. If found, what heading or location identifies it?
+3. A brief summary of the content (if found)
+4. If missing and required, provide a recommendation
+
+Respond in this exact JSON format:
+{
+    "sections": [
+        {
+            "section_id": "hero",
+            "section_name": "Hero Section",
+            "required": true,
+            "found": true,
+            "location": "First H1: 'Botox Treatments'",
+            "content_summary": "Hero with title and tagline about Botox treatments",
+            "quality_score": 8,
+            "recommendation": null
+        }
+    ],
+    "missing_sections": ["faq", "pricing"],
+    "overall_score": 75,
+    "summary": "Page has 6 of 10 expected sections. Missing FAQ and pricing sections that could improve SEO."
+}`
+
+        // Use OpenAI for analysis (can extend to other providers)
+        if (!openai) {
+            return res.status(400).json({ error: 'OpenAI API key not configured' })
+        }
+
+        const startTime = Date.now()
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                { role: 'system', content: template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.' },
+                { role: 'user', content: analysisPrompt }
+            ],
+            temperature: 0.3,
+            response_format: { type: 'json_object' }
+        })
+
+        const content = response.choices[0]?.message?.content
+        const inputTokens = response.usage?.prompt_tokens || 0
+        const outputTokens = response.usage?.completion_tokens || 0
+        const requestDurationMs = Date.now() - startTime
+
+        if (!content) {
+            return res.status(500).json({ error: 'No response from AI' })
+        }
+
+        // Log AI usage
+        await logAIUsage({
+            action: 'content_analysis',
+            pageId,
+            pageUrl: page.url,
+            provider: 'openai',
+            model: 'gpt-4o',
+            inputTokens,
+            outputTokens,
+            requestDurationMs,
+            success: true
+        })
+
+        // Parse response
+        let analysis
+        try {
+            analysis = JSON.parse(content)
+        } catch (e) {
+            return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
+        }
+
+        res.json({
+            success: true,
+            pageType: effectivePageType,
+            template: {
+                name: template.name,
+                sections: template.sections
+            },
+            analysis,
+            tokens: { input: inputTokens, output: outputTokens },
+            durationMs: requestDurationMs
+        })
+
+    } catch (error) {
+        console.error('Content analysis error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/enhance-section - Rewrite a specific section
+app.post('/api/enhance-section', async (req, res) => {
+    try {
+        const { pageId, sectionId, sectionContent, model } = req.body
+
+        if (!pageId || !sectionId) {
+            return res.status(400).json({ error: 'pageId and sectionId are required' })
+        }
+
+        // Get page info
+        const { data: page, error: pageError } = await getSupabase()
+            .from('page_index')
+            .select('id, url, title, page_type, cleaned_html, main_content')
+            .eq('id', pageId)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        if (!page.page_type) {
+            return res.status(400).json({ error: 'Page must have page_type set' })
+        }
+
+        // Get template
+        const { data: template, error: templateError } = await getSupabase()
+            .from('page_content_templates')
+            .select('*')
+            .eq('page_type', page.page_type)
+            .single()
+
+        if (templateError || !template) {
+            return res.status(404).json({ error: `No template found for page type: ${page.page_type}` })
+        }
+
+        // Find the section definition
+        const sectionDef = template.sections.find(s => s.id === sectionId)
+        if (!sectionDef) {
+            return res.status(404).json({ error: `Section '${sectionId}' not found in template` })
+        }
+
+        // Build enhancement prompt
+        const enhancePrompt = `You are an expert content writer for ${page.page_type.toLowerCase()} pages.
+
+SECTION TO ENHANCE: ${sectionDef.name}
+Section Purpose: ${sectionDef.description}
+
+PAGE CONTEXT:
+Title: ${page.title || 'Untitled'}
+URL: ${page.url}
+
+${sectionContent ? `CURRENT SECTION CONTENT:
+${sectionContent}` : `The section is MISSING. Generate new content for it based on the page context.`}
+
+${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
+
+Respond in this JSON format:
+{
+    "section_id": "${sectionId}",
+    "section_name": "${sectionDef.name}",
+    "original_content": "The original content if provided",
+    "enhanced_content": "Your improved HTML content for this section",
+    "is_new_section": ${!sectionContent},
+    "implementation_notes": "Clear instructions on where and how to implement this content",
+    "changes_made": ["List of specific improvements made"],
+    "reasoning": "Explanation of why these changes improve the content"
+}`
+
+        // Use specified model or default
+        const selectedModel = model || 'gpt-4o'
+
+        if (!openai) {
+            return res.status(400).json({ error: 'OpenAI API key not configured' })
+        }
+
+        const startTime = Date.now()
+        const response = await openai.chat.completions.create({
+            model: selectedModel,
+            messages: [
+                { role: 'system', content: 'You are an expert content writer who creates engaging, SEO-optimized content for websites.' },
+                { role: 'user', content: enhancePrompt }
+            ],
+            temperature: 0.7,
+            response_format: { type: 'json_object' }
+        })
+
+        const content = response.choices[0]?.message?.content
+        const inputTokens = response.usage?.prompt_tokens || 0
+        const outputTokens = response.usage?.completion_tokens || 0
+        const requestDurationMs = Date.now() - startTime
+
+        if (!content) {
+            return res.status(500).json({ error: 'No response from AI' })
+        }
+
+        // Log AI usage
+        await logAIUsage({
+            action: 'section_enhancement',
+            pageId,
+            pageUrl: page.url,
+            provider: 'openai',
+            model: selectedModel,
+            inputTokens,
+            outputTokens,
+            requestDurationMs,
+            success: true
+        })
+
+        // Parse response
+        let enhancement
+        try {
+            enhancement = JSON.parse(content)
+        } catch (e) {
+            return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
+        }
+
+        res.json({
+            success: true,
+            enhancement,
+            tokens: { input: inputTokens, output: outputTokens },
+            durationMs: requestDurationMs
+        })
+
+    } catch (error) {
+        console.error('Section enhancement error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'dist')))
 
