@@ -782,8 +782,15 @@ export default function PageContent() {
             .single()
 
         if (!error && data) {
-            setSelectedSite(data.id)
-            setSelectedPage('')
+            // Only update if the site is actually different
+            if (data.id !== selectedSite) {
+                setSelectedSite(data.id)
+                // Only clear selected page if we're changing sites
+                // and there's no page ID in the URL
+                if (!searchParams.get('pid')) {
+                    setSelectedPage('')
+                }
+            }
         }
     }
 
