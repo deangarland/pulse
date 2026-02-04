@@ -18,10 +18,11 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil, Save, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 import { PageEditSheet } from "@/components/PageEditSheet"
+import { RichTextEditor } from "@/components/RichTextEditor"
 
 interface StructuredContentItem {
     type: 'heading' | 'paragraph'
@@ -61,6 +62,26 @@ interface Page {
     schema_status: string | null
     schema_generated_at: string | null
     recommendation_generated_at: string | null
+    // Enhanced content storage
+    enhanced_content: {
+        sections?: Record<string, {
+            original?: string | null
+            enhanced?: string
+            reasoning?: string
+            changes?: string[]
+            heading_level?: string | null
+            is_new_section?: boolean
+            enhanced_at?: string
+            user_edited?: boolean
+            edited_at?: string
+        }>
+        section_analysis?: any[]
+        overall_score?: number
+        analysis_summary?: string
+        missing_sections?: string[]
+        analyzed_at?: string
+    } | null
+    content_analyzed_at: string | null
 }
 
 // Syntax highlighted JSON display
@@ -443,6 +464,240 @@ function ComparisonRow({
     )
 }
 
+// Enhanced Section Card - shows editable enhanced content with reasoning
+interface EnhancedSectionCardProps {
+    section: {
+        section_id: string
+        section_name: string
+        required: boolean
+        found: boolean
+        location?: string
+        quality_score?: number
+        content_summary?: string
+        recommendation?: string
+    }
+    storedContent?: {
+        original?: string | null
+        enhanced?: string
+        reasoning?: string
+        changes?: string[]
+        heading_level?: string | null
+        is_new_section?: boolean
+        enhanced_at?: string
+        user_edited?: boolean
+    }
+    onEnhance: () => void
+    onSave: (content: string) => void
+    isEnhancing: boolean
+    isSaving: boolean
+}
+
+function EnhancedSectionCard({
+    section,
+    storedContent,
+    onEnhance,
+    onSave,
+    isEnhancing,
+    isSaving
+}: EnhancedSectionCardProps) {
+    const [isEditing, setIsEditing] = useState(false)
+    const [editedContent, setEditedContent] = useState(storedContent?.enhanced || '')
+    const [isExpanded, setIsExpanded] = useState(true)
+    const hasEnhancedContent = !!storedContent?.enhanced
+
+    // Update local state when storedContent changes
+    useEffect(() => {
+        if (storedContent?.enhanced) {
+            setEditedContent(storedContent.enhanced)
+        }
+    }, [storedContent?.enhanced])
+
+    const handleSave = () => {
+        onSave(editedContent)
+        setIsEditing(false)
+    }
+
+    const handleCopyHtml = async () => {
+        await navigator.clipboard.writeText(editedContent)
+        toast.success('HTML copied to clipboard!')
+    }
+
+    return (
+        <div className={`rounded-lg border ${section.found
+            ? hasEnhancedContent ? 'bg-blue-50/50 border-blue-200' : 'bg-green-50 border-green-200'
+            : section.required
+                ? 'bg-red-50 border-red-200'
+                : 'bg-gray-50 border-gray-200'
+            }`}
+        >
+            {/* Header */}
+            <div
+                className="flex items-center justify-between p-3 cursor-pointer"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-center gap-2 flex-1">
+                    {section.found ? (
+                        hasEnhancedContent ? (
+                            <Sparkles className="h-4 w-4 text-blue-600" />
+                        ) : (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        )
+                    ) : (
+                        <AlertCircle className="h-4 w-4 text-red-500" />
+                    )}
+                    {section.location && extractHeadingLevel(section.location) && (
+                        <HeadingBadge level={extractHeadingLevel(section.location)!} />
+                    )}
+                    <span className="font-medium">{section.section_name}</span>
+                    <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
+                        {section.required ? 'Required' : 'Optional'}
+                    </Badge>
+                    {section.quality_score && (
+                        <Badge variant="outline" className="text-xs">
+                            {section.quality_score}/10
+                        </Badge>
+                    )}
+                    {hasEnhancedContent && (
+                        <Badge className="text-xs bg-blue-500">Enhanced</Badge>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </div>
+            </div>
+
+            {/* Content */}
+            {isExpanded && (
+                <div className="px-3 pb-3 space-y-3">
+                    {hasEnhancedContent ? (
+                        <>
+                            {/* Enhanced Content Editor */}
+                            <div className="bg-white rounded-md">
+                                <RichTextEditor
+                                    content={editedContent}
+                                    onChange={setEditedContent}
+                                    editable={isEditing}
+                                    className={isEditing ? 'ring-2 ring-blue-500' : ''}
+                                />
+                            </div>
+
+                            {/* Why This Is Better */}
+                            {storedContent?.reasoning && (
+                                <Collapsible defaultOpen>
+                                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900">
+                                        <Sparkles className="h-3.5 w-3.5" />
+                                        Why This Is Better
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="mt-2 p-3 bg-blue-50 rounded-md border border-blue-100">
+                                        <p className="text-sm text-blue-800">{storedContent.reasoning}</p>
+                                        {storedContent.changes && storedContent.changes.length > 0 && (
+                                            <ul className="mt-2 text-sm text-blue-700 space-y-1">
+                                                {storedContent.changes.map((change, i) => (
+                                                    <li key={i} className="flex items-start gap-2">
+                                                        <Check className="h-3.5 w-3.5 mt-0.5 text-blue-500" />
+                                                        {change}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            )}
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 pt-2 border-t">
+                                {isEditing ? (
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleSave}
+                                            disabled={isSaving}
+                                            className="gap-1"
+                                        >
+                                            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                            Save Changes
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setEditedContent(storedContent?.enhanced || '')
+                                                setIsEditing(false)
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => setIsEditing(true)}
+                                            className="gap-1"
+                                        >
+                                            <Pencil className="h-3 w-3" />
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleCopyHtml}
+                                            className="gap-1"
+                                        >
+                                            <Copy className="h-3 w-3" />
+                                            Copy HTML
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={onEnhance}
+                                            disabled={isEnhancing}
+                                            className="gap-1"
+                                        >
+                                            {isEnhancing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                                            Re-generate
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            {/* No enhanced content yet */}
+                            {section.found ? (
+                                <div className="text-sm text-muted-foreground">
+                                    <p>📍 {section.location?.replace(/^H[1-4]:\s*/i, '').replace(/^['"]|['"]$/g, '')}</p>
+                                    {section.content_summary && <p className="mt-1">{section.content_summary}</p>}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-amber-700 italic">
+                                    💡 {section.recommendation || `This ${section.required ? 'required' : 'optional'} section is missing.`}
+                                </p>
+                            )}
+                            <Button
+                                size="sm"
+                                variant={section.found ? 'outline' : 'default'}
+                                disabled={isEnhancing}
+                                onClick={onEnhance}
+                                className="gap-1"
+                            >
+                                {isEnhancing ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                    <Sparkles className="h-3 w-3" />
+                                )}
+                                {section.found ? 'Enhance Content' : 'Generate Content'}
+                            </Button>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
 // Page types for filter
 const PAGE_TYPES = [
     'HOMEPAGE', 'PROCEDURE', 'RESOURCE', 'ABOUT', 'CONTACT',
@@ -729,6 +984,8 @@ export default function PageContent() {
         onSuccess: (data) => {
             toast.success('Content analyzed!', { description: `Score: ${data.analysis.overall_score}/100` })
             setContentAnalysis(data.analysis)
+            // Refetch page to get updated enhanced_content from DB
+            refetchPage()
         },
         onError: (error: Error) => {
             toast.error('Analysis failed', { description: error.message })
@@ -752,9 +1009,35 @@ export default function PageContent() {
         },
         onSuccess: (data) => {
             toast.success('Section enhanced!', { description: data.enhancement?.section_name })
+            // Refetch page to get updated enhanced_content
+            refetchPage()
         },
         onError: (error: Error) => {
             toast.error('Enhancement failed', { description: error.message })
+        }
+    })
+
+    // Save edited enhanced content mutation
+    const saveEnhancedContentMutation = useMutation({
+        mutationFn: async ({ pageId, sectionId, content }: { pageId: string; sectionId: string; content: string }) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/pages/${pageId}/enhanced-content`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sectionId, content })
+            })
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to save content')
+            }
+            return response.json()
+        },
+        onSuccess: () => {
+            toast.success('Content saved!')
+            refetchPage()
+        },
+        onError: (error: Error) => {
+            toast.error('Save failed', { description: error.message })
         }
     })
 
@@ -1072,69 +1355,26 @@ ${schema?.overall_reasoning || 'N/A'}
                                                 </div>
 
                                                 {/* Sections List */}
-                                                <div className="space-y-2">
-                                                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Section Analysis</h4>
+                                                <div className="space-y-3">
+                                                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Enhanced Sections</h4>
                                                     {contentAnalysis.sections.map((section) => (
-                                                        <div
+                                                        <EnhancedSectionCard
                                                             key={section.section_id}
-                                                            className={`p-3 rounded-lg border ${section.found
-                                                                ? 'bg-green-50 border-green-200'
-                                                                : section.required
-                                                                    ? 'bg-red-50 border-red-200'
-                                                                    : 'bg-gray-50 border-gray-200'
-                                                                }`}
-                                                        >
-                                                            <div className="flex items-start justify-between">
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center gap-2">
-                                                                        {section.found ? (
-                                                                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                                                        ) : (
-                                                                            <AlertCircle className="h-4 w-4 text-red-500" />
-                                                                        )}
-                                                                        {/* Show heading badge if location indicates heading level */}
-                                                                        {section.location && extractHeadingLevel(section.location) && (
-                                                                            <HeadingBadge level={extractHeadingLevel(section.location)!} />
-                                                                        )}
-                                                                        <span className="font-medium">{section.section_name}</span>
-                                                                        <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
-                                                                            {section.required ? 'Required' : 'Optional'}
-                                                                        </Badge>
-                                                                        {section.quality_score && (
-                                                                            <Badge variant="outline" className="text-xs">
-                                                                                Quality: {section.quality_score}/10
-                                                                            </Badge>
-                                                                        )}
-                                                                    </div>
-                                                                    {/* Show the heading text from location without the H2: prefix */}
-                                                                    {section.location && (
-                                                                        <p className="text-xs text-muted-foreground mt-1">
-                                                                            📍 {section.location.replace(/^H[1-4]:\s*/i, '').replace(/^['"]|['"]$/g, '')}
-                                                                        </p>
-                                                                    )}
-                                                                    {section.content_summary && (
-                                                                        <p className="text-sm text-muted-foreground mt-1">{section.content_summary}</p>
-                                                                    )}
-                                                                    {section.recommendation && (
-                                                                        <p className="text-sm text-amber-700 mt-1 italic">💡 {section.recommendation}</p>
-                                                                    )}
-                                                                </div>
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant={section.found ? 'outline' : 'default'}
-                                                                    disabled={enhanceSectionMutation.isPending}
-                                                                    onClick={() => enhanceSectionMutation.mutate({
-                                                                        pageId: page.id,
-                                                                        sectionId: section.section_id,
-                                                                        sectionContent: section.content_summary
-                                                                    })}
-                                                                    className="gap-1 ml-2"
-                                                                >
-                                                                    <Sparkles className="h-3 w-3" />
-                                                                    {section.found ? 'Enhance' : 'Generate'}
-                                                                </Button>
-                                                            </div>
-                                                        </div>
+                                                            section={section}
+                                                            storedContent={page.enhanced_content?.sections?.[section.section_id]}
+                                                            onEnhance={() => enhanceSectionMutation.mutate({
+                                                                pageId: page.id,
+                                                                sectionId: section.section_id,
+                                                                sectionContent: section.content_summary
+                                                            })}
+                                                            onSave={(content) => saveEnhancedContentMutation.mutate({
+                                                                pageId: page.id,
+                                                                sectionId: section.section_id,
+                                                                content
+                                                            })}
+                                                            isEnhancing={enhanceSectionMutation.isPending}
+                                                            isSaving={saveEnhancedContentMutation.isPending}
+                                                        />
                                                     ))}
                                                 </div>
 

@@ -1919,6 +1919,38 @@ Respond in this exact JSON format:
             return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
         }
 
+        // Save analysis to database
+        try {
+            const { data: existingPage } = await getSupabase()
+                .from('page_index')
+                .select('enhanced_content')
+                .eq('id', pageId)
+                .single()
+
+            const existingContent = existingPage?.enhanced_content || { sections: {} }
+
+            // Merge analysis results with existing content
+            existingContent.overall_score = analysis.overall_score
+            existingContent.analysis_summary = analysis.summary
+            existingContent.missing_sections = analysis.missing_sections
+            existingContent.analyzed_at = new Date().toISOString()
+
+            // Store section analysis (not sections content yet)
+            existingContent.section_analysis = analysis.sections
+
+            await getSupabase()
+                .from('page_index')
+                .update({
+                    enhanced_content: existingContent,
+                    content_analyzed_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            console.log(`✅ Saved content analysis for page ${pageId}`)
+        } catch (saveError) {
+            console.error('Failed to save analysis:', saveError)
+        }
+
         res.json({
             success: true,
             pageType: effectivePageType,
@@ -1933,6 +1965,84 @@ Respond in this exact JSON format:
 
     } catch (error) {
         console.error('Content analysis error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// GET /api/pages/:id/enhanced-content - Fetch stored enhanced content
+app.get('/api/pages/:id/enhanced-content', async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const { data: page, error } = await getSupabase()
+            .from('page_index')
+            .select('id, url, title, page_type, enhanced_content, content_analyzed_at')
+            .eq('id', id)
+            .single()
+
+        if (error || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        res.json({
+            success: true,
+            pageId: page.id,
+            pageUrl: page.url,
+            pageType: page.page_type,
+            enhancedContent: page.enhanced_content || { sections: {} },
+            analyzedAt: page.content_analyzed_at
+        })
+    } catch (error) {
+        console.error('Get enhanced content error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// PUT /api/pages/:id/enhanced-content - Save edited enhanced content
+app.put('/api/pages/:id/enhanced-content', async (req, res) => {
+    try {
+        const { id } = req.params
+        const { sectionId, content } = req.body
+
+        if (!sectionId || !content) {
+            return res.status(400).json({ error: 'sectionId and content are required' })
+        }
+
+        // Get existing enhanced_content
+        const { data: page, error: fetchError } = await getSupabase()
+            .from('page_index')
+            .select('enhanced_content')
+            .eq('id', id)
+            .single()
+
+        if (fetchError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        const existingContent = page.enhanced_content || { sections: {} }
+
+        // Update the specific section's enhanced content
+        if (!existingContent.sections[sectionId]) {
+            existingContent.sections[sectionId] = {}
+        }
+        existingContent.sections[sectionId].enhanced = content
+        existingContent.sections[sectionId].edited_at = new Date().toISOString()
+        existingContent.sections[sectionId].user_edited = true
+
+        // Save to database
+        const { error: updateError } = await getSupabase()
+            .from('page_index')
+            .update({ enhanced_content: existingContent })
+            .eq('id', id)
+
+        if (updateError) {
+            return res.status(500).json({ error: updateError.message })
+        }
+
+        console.log(`✅ Saved user edit for section ${sectionId} on page ${id}`)
+        res.json({ success: true, sectionId, updatedAt: new Date().toISOString() })
+    } catch (error) {
+        console.error('Save enhanced content error:', error)
         res.status(500).json({ error: error.message })
     }
 })
@@ -2051,6 +2161,43 @@ Respond in this JSON format:
             enhancement = JSON.parse(content)
         } catch (e) {
             return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
+        }
+
+        // Save enhanced content to database
+        try {
+            // Get existing enhanced_content or initialize
+            const { data: existingPage } = await getSupabase()
+                .from('page_index')
+                .select('enhanced_content')
+                .eq('id', pageId)
+                .single()
+
+            const existingContent = existingPage?.enhanced_content || { sections: {} }
+
+            // Update the specific section
+            existingContent.sections[sectionId] = {
+                original: sectionContent || null,
+                enhanced: enhancement.enhanced_content,
+                reasoning: enhancement.reasoning,
+                changes: enhancement.changes_made || [],
+                heading_level: sectionDef.heading_level || null,
+                is_new_section: enhancement.is_new_section || false,
+                enhanced_at: new Date().toISOString()
+            }
+
+            // Update page with enhanced content
+            await getSupabase()
+                .from('page_index')
+                .update({
+                    enhanced_content: existingContent,
+                    content_analyzed_at: new Date().toISOString()
+                })
+                .eq('id', pageId)
+
+            console.log(`✅ Saved enhanced content for section ${sectionId} on page ${pageId}`)
+        } catch (saveError) {
+            console.error('Failed to save enhanced content:', saveError)
+            // Continue - still return the enhancement even if save fails
         }
 
         res.json({
