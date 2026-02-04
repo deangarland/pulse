@@ -1335,7 +1335,7 @@ app.put('/api/admin/users/:id/permissions', async (req, res) => {
 // GET /api/admin/accounts - List all accounts for assignment
 app.get('/api/admin/accounts', async (req, res) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
             .from('accounts')
             .select('id, account_name')
             .order('account_name')

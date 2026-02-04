@@ -68,16 +68,31 @@ function cleanHtml(rawHtml) {
 
     const $ = load(rawHtml)
 
+    // First, remove everything that's definitely not content
     REMOVE_TAGS.forEach(tag => $(tag).remove())
 
+    // Remove navigation and non-content elements
+    $('nav, header, footer, aside, noscript, iframe, form, [role="navigation"], [role="banner"], [role="contentinfo"], .nav, .navigation, .header, .footer, .sidebar').remove()
+
+    // Try to find main content area first
+    let mainContent = $('main, article, [role="main"], .content, #content, .main-content, #main').first()
+
+    // If no main content found, use body
+    if (!mainContent.length) {
+        mainContent = $('body')
+    }
+
+    // Clone and work with just the main content
+    const $content = load(mainContent.html() || '')
+
     // Remove comments
-    $('*').contents().filter(function () {
+    $content('*').contents().filter(function () {
         return this.type === 'comment'
     }).remove()
 
-    // Process all elements
-    $('*').each((_, el) => {
-        const $el = $(el)
+    // Strip most attributes but keep structural ones
+    $content('*').each((_, el) => {
+        const $el = $content(el)
         const attribs = el.attribs || {}
         Object.keys(attribs).forEach(attr => {
             if (!KEEP_ATTRIBUTES.has(attr)) {
@@ -86,7 +101,11 @@ function cleanHtml(rawHtml) {
         })
     })
 
-    let cleaned = $.html()
+    let cleaned = $content.html()
+    if (!cleaned) return ''
+
+    // Normalize whitespace but preserve structure
+    cleaned = cleaned
         .replace(/\s+/g, ' ')
         .replace(/>\s+</g, '><')
         .replace(/\s+>/g, '>')
@@ -122,24 +141,7 @@ function parsePage(html, baseUrl) {
     // Canonical URL
     const canonicalUrl = $('link[rel="canonical"]').attr('href') || null
 
-    // Extract all headings
-    const h1 = []
-    const h2 = []
-    const h3 = []
-    $('h1').each((_, el) => {
-        const text = $(el).text().trim()
-        if (text) h1.push(text)
-    })
-    $('h2').each((_, el) => {
-        const text = $(el).text().trim()
-        if (text) h2.push(text)
-    })
-    $('h3').each((_, el) => {
-        const text = $(el).text().trim()
-        if (text) h3.push(text)
-    })
-
-    // Extract internal and external links
+    // Extract internal and external links BEFORE removing elements
     const internalLinks = []
     const externalLinks = []
     $('a[href]').each((_, el) => {
@@ -163,8 +165,44 @@ function parsePage(html, baseUrl) {
         }
     })
 
+    // Remove non-content elements BEFORE extracting headings and content
+    $('script, style, nav, header, footer, aside, noscript, iframe, form, [role="navigation"], [role="banner"], [role="contentinfo"]').remove()
+
+    // Now extract headings from cleaned content only
+    const h1 = []
+    const h2 = []
+    const h3 = []
+    $('h1').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text && text.length > 2) h1.push(text)
+    })
+    $('h2').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text && text.length > 2) h2.push(text)
+    })
+    $('h3').each((_, el) => {
+        const text = $(el).text().trim()
+        if (text && text.length > 2) h3.push(text)
+    })
+
+    // Extract structured content: headings and paragraphs in document order
+    const structuredContent = []
+    $('main, article, [role="main"], .content, #content, body').first()
+        .find('h1, h2, h3, h4, p, li').each((_, el) => {
+            const tagName = el.tagName.toLowerCase()
+            const text = $(el).text().trim()
+            if (!text || text.length < 3) return
+
+            if (['h1', 'h2', 'h3', 'h4'].includes(tagName)) {
+                structuredContent.push({ type: 'heading', level: tagName, text })
+            } else if (tagName === 'p' || tagName === 'li') {
+                // Truncate long paragraphs
+                const truncated = text.length > 500 ? text.substring(0, 500) + '...' : text
+                structuredContent.push({ type: 'paragraph', text: truncated })
+            }
+        })
+
     // Main content (full text extraction)
-    $('script, style, nav, header, footer, aside, noscript, iframe, form').remove()
     const mainContent = $('main, article, [role="main"], .content, #content, body')
         .first().text().replace(/\s+/g, ' ').trim()
 
@@ -173,11 +211,13 @@ function parsePage(html, baseUrl) {
         meta_description: metaDesc,
         canonical_url: canonicalUrl,
         headings: { h1, h2, h3 },
+        structured_content: structuredContent.slice(0, 100), // Limit to first 100 elements
         internal_links: [...new Set(internalLinks)],
         external_links: [...new Set(externalLinks)],
         main_content: mainContent
     }
 }
+
 
 // ============================================================
 // URL Queue
@@ -359,6 +399,7 @@ async function savePage(siteId, url, data) {
         cleaned_html: data.cleanedHtml,
         main_content: data.main_content || null,
         headings: data.headings || null,
+        structured_content: data.structured_content || null,
         meta_tags: { description: data.meta_description } || null,
         links_internal: data.internal_links || null,
         links_external: data.external_links || null,
