@@ -606,4 +606,4 @@ if (isMainModule) {
 }
 
 // Export functions for use by server.js
-export { runCrawl, parsePage, cleanHtml }
+export { parsePage, cleanHtml }
