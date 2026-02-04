@@ -123,11 +123,13 @@
 }
 
 /* TipTap Editor Prose Styles */
-.prose {
+.prose,
+.tiptap {
   line-height: 1.7;
 }
 
-.prose h1 {
+.prose h1,
+.tiptap h1 {
   font-size: 2rem;
   font-weight: 700;
   margin-bottom: 0.75rem;
@@ -135,7 +137,8 @@
   line-height: 1.2;
 }
 
-.prose h2 {
+.prose h2,
+.tiptap h2 {
   font-size: 1.5rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
@@ -143,7 +146,8 @@
   line-height: 1.3;
 }
 
-.prose h3 {
+.prose h3,
+.tiptap h3 {
   font-size: 1.25rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
@@ -151,46 +155,59 @@
   line-height: 1.4;
 }
 
-.prose h4 {
+.prose h4,
+.tiptap h4 {
   font-size: 1.1rem;
   font-weight: 500;
   margin-bottom: 0.25rem;
   margin-top: 0.5rem;
 }
 
-.prose p {
+.prose p,
+.tiptap p {
   margin-bottom: 0.75rem;
 }
 
-.prose p:last-child {
+.prose p:last-child,
+.tiptap p:last-child {
   margin-bottom: 0;
 }
 
-.prose strong, .prose b {
+.prose strong,
+.prose b,
+.tiptap strong,
+.tiptap b {
   font-weight: 600;
 }
 
-.prose em, .prose i {
+.prose em,
+.prose i,
+.tiptap em,
+.tiptap i {
   font-style: italic;
 }
 
-.prose ul {
+.prose ul,
+.tiptap ul {
   list-style-type: disc;
   padding-left: 1.5rem;
   margin: 0.5rem 0;
 }
 
-.prose ol {
+.prose ol,
+.tiptap ol {
   list-style-type: decimal;
   padding-left: 1.5rem;
   margin: 0.5rem 0;
 }
 
-.prose li {
+.prose li,
+.tiptap li {
   margin: 0.25rem 0;
 }
 
-.prose li p {
+.prose li p,
+.tiptap li p {
   margin: 0;
 }
 
