@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
@@ -17,7 +18,7 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 import { PageEditSheet } from "@/components/PageEditSheet"
@@ -657,6 +658,70 @@ export default function PageContent() {
     // State for edit sheet
     const [editSheetOpen, setEditSheetOpen] = useState(false)
 
+    // State for content analysis
+    const [contentAnalysis, setContentAnalysis] = useState<{
+        sections: Array<{
+            section_id: string
+            section_name: string
+            required: boolean
+            found: boolean
+            location?: string
+            content_summary?: string
+            quality_score?: number
+            recommendation?: string
+        }>
+        missing_sections: string[]
+        overall_score: number
+        summary: string
+    } | null>(null)
+
+    // Content analysis mutation
+    const analyzeContentMutation = useMutation({
+        mutationFn: async ({ pageId, pageType }: { pageId: string; pageType?: string }) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/analyze-content`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId, pageType })
+            })
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to analyze content')
+            }
+            return response.json()
+        },
+        onSuccess: (data) => {
+            toast.success('Content analyzed!', { description: `Score: ${data.analysis.overall_score}/100` })
+            setContentAnalysis(data.analysis)
+        },
+        onError: (error: Error) => {
+            toast.error('Analysis failed', { description: error.message })
+        }
+    })
+
+    // Section enhancement mutation
+    const enhanceSectionMutation = useMutation({
+        mutationFn: async ({ pageId, sectionId, sectionContent }: { pageId: string; sectionId: string; sectionContent?: string }) => {
+            const apiUrl = import.meta.env.VITE_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/enhance-section`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId, sectionId, sectionContent, model: selectedModel })
+            })
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Failed to enhance section')
+            }
+            return response.json()
+        },
+        onSuccess: (data) => {
+            toast.success('Section enhanced!', { description: data.enhancement?.section_name })
+        },
+        onError: (error: Error) => {
+            toast.error('Enhancement failed', { description: error.message })
+        }
+    })
+
     // Export functions
     const exportAsMarkdown = useCallback(() => {
         if (!page) return
@@ -876,11 +941,15 @@ ${schema?.overall_reasoning || 'N/A'}
                                     </div>
                                     <Button
                                         variant="default"
-                                        disabled
+                                        disabled={analyzeContentMutation.isPending || !page.page_type}
+                                        onClick={() => analyzeContentMutation.mutate({ pageId: page.id, pageType: page.page_type || undefined })}
                                         className="gap-2"
                                     >
-                                        <Wand2 className="h-4 w-4" />
-                                        Generate Content
+                                        {analyzeContentMutation.isPending ? (
+                                            <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</>
+                                        ) : (
+                                            <><Wand2 className="h-4 w-4" /> Analyze Content</>
+                                        )}
                                     </Button>
                                 </div>
                             </CardHeader>
@@ -944,17 +1013,98 @@ ${schema?.overall_reasoning || 'N/A'}
                                         )}
                                     </TabsContent>
 
-                                    {/* Enhanced Content (Tiptap Editor) */}
+                                    {/* Enhanced Content - Section Analysis View */}
                                     <TabsContent value="enhanced" className="space-y-4">
-                                        <div className="text-sm text-muted-foreground mb-3 p-4 bg-amber-50 border border-amber-200 rounded-md">
-                                            <p className="font-medium text-amber-800">No enhanced content yet</p>
-                                            <p className="text-amber-700 mt-1">Click "Generate Content" to create an AI-enhanced version of this page's content.</p>
-                                        </div>
+                                        {!contentAnalysis ? (
+                                            <div className="text-sm text-muted-foreground mb-3 p-4 bg-amber-50 border border-amber-200 rounded-md">
+                                                <p className="font-medium text-amber-800">No analysis yet</p>
+                                                <p className="text-amber-700 mt-1">Click "Analyze Content" to compare this page against the template for {page.page_type || 'its page type'}.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {/* Overall Score */}
+                                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                                    <div>
+                                                        <h4 className="font-semibold">Content Completeness Score</h4>
+                                                        <p className="text-sm text-muted-foreground">{contentAnalysis.summary}</p>
+                                                    </div>
+                                                    <div className={`text-3xl font-bold ${contentAnalysis.overall_score >= 80 ? 'text-green-600' :
+                                                        contentAnalysis.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
+                                                        }`}>
+                                                        {contentAnalysis.overall_score}%
+                                                    </div>
+                                                </div>
 
-                                        {/* Tiptap Editor Placeholder - will be enabled after generation */}
-                                        <div className="border rounded-md p-4 bg-muted/20 min-h-[300px] text-muted-foreground italic flex items-center justify-center">
-                                            Enhanced content will appear here after generation
-                                        </div>
+                                                {/* Sections List */}
+                                                <div className="space-y-2">
+                                                    <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Section Analysis</h4>
+                                                    {contentAnalysis.sections.map((section) => (
+                                                        <div
+                                                            key={section.section_id}
+                                                            className={`p-3 rounded-lg border ${section.found
+                                                                ? 'bg-green-50 border-green-200'
+                                                                : section.required
+                                                                    ? 'bg-red-50 border-red-200'
+                                                                    : 'bg-gray-50 border-gray-200'
+                                                                }`}
+                                                        >
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        {section.found ? (
+                                                                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                                        ) : (
+                                                                            <AlertCircle className="h-4 w-4 text-red-500" />
+                                                                        )}
+                                                                        <span className="font-medium">{section.section_name}</span>
+                                                                        <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
+                                                                            {section.required ? 'Required' : 'Optional'}
+                                                                        </Badge>
+                                                                        {section.quality_score && (
+                                                                            <Badge variant="outline" className="text-xs">
+                                                                                Quality: {section.quality_score}/10
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                    {section.location && (
+                                                                        <p className="text-xs text-muted-foreground mt-1">📍 {section.location}</p>
+                                                                    )}
+                                                                    {section.content_summary && (
+                                                                        <p className="text-sm text-muted-foreground mt-1">{section.content_summary}</p>
+                                                                    )}
+                                                                    {section.recommendation && (
+                                                                        <p className="text-sm text-amber-700 mt-1 italic">💡 {section.recommendation}</p>
+                                                                    )}
+                                                                </div>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant={section.found ? 'outline' : 'default'}
+                                                                    disabled={enhanceSectionMutation.isPending}
+                                                                    onClick={() => enhanceSectionMutation.mutate({
+                                                                        pageId: page.id,
+                                                                        sectionId: section.section_id,
+                                                                        sectionContent: section.content_summary
+                                                                    })}
+                                                                    className="gap-1 ml-2"
+                                                                >
+                                                                    <Sparkles className="h-3 w-3" />
+                                                                    {section.found ? 'Enhance' : 'Generate'}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Missing Sections Summary */}
+                                                {contentAnalysis.missing_sections.length > 0 && (
+                                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                                        <p className="text-sm font-medium text-amber-800">
+                                                            Missing Sections: {contentAnalysis.missing_sections.join(', ')}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </TabsContent>
                                 </Tabs>
                             </CardContent>
