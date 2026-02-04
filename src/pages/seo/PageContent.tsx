@@ -17,9 +17,10 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Tags } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
+import { PageEditSheet } from "@/components/PageEditSheet"
 
 interface StructuredContentItem {
     type: 'heading' | 'paragraph'
@@ -641,27 +642,8 @@ export default function PageContent() {
         }
     })
 
-    // Re-classify single page mutation
-    const classifyMutation = useMutation({
-        mutationFn: async (pageId: string) => {
-            const apiUrl = import.meta.env.VITE_API_URL || ''
-            const response = await fetch(`${apiUrl}/api/pages/${pageId}/classify`, {
-                method: 'POST'
-            })
-            if (!response.ok) {
-                const error = await response.json()
-                throw new Error(error.error || 'Failed to classify page')
-            }
-            return response.json()
-        },
-        onSuccess: (data) => {
-            toast.success(`Page classified as: ${data.page_type}`)
-            refetchPage()
-        },
-        onError: (error: Error) => {
-            toast.error('Classification failed', { description: error.message })
-        }
-    })
+    // State for edit sheet
+    const [editSheetOpen, setEditSheetOpen] = useState(false)
 
     // Export functions
     const exportAsMarkdown = useCallback(() => {
@@ -855,6 +837,7 @@ ${schema?.overall_reasoning || 'N/A'}
                             variant="outline"
                             size="sm"
                             title="Re-crawl this page"
+                            aria-label="Re-crawl this page"
                         >
                             {recrawlMutation.isPending ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -863,19 +846,16 @@ ${schema?.overall_reasoning || 'N/A'}
                             )}
                         </Button>
 
-                        {/* Re-classify Button */}
+                        {/* Edit Page Button */}
                         <Button
-                            onClick={() => page && classifyMutation.mutate(page.id)}
-                            disabled={!selectedPage || classifyMutation.isPending}
+                            onClick={() => setEditSheetOpen(true)}
+                            disabled={!selectedPage}
                             variant="outline"
                             size="sm"
-                            title="Re-classify this page"
+                            title="Edit page details"
+                            aria-label="Edit page details"
                         >
-                            {classifyMutation.isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Tags className="h-4 w-4" />
-                            )}
+                            <Pencil className="h-4 w-4" />
                         </Button>
                     </div>
                 </CardHeader>
@@ -1194,6 +1174,26 @@ ${schema?.overall_reasoning || 'N/A'}
                 </Tabs >
             ) : null
             }
+
+            {/* Edit Page Sheet */}
+            <PageEditSheet
+                page={page ? {
+                    id: page.id,
+                    url: page.url,
+                    title: page.title || null,
+                    page_type: page.page_type || null,
+                    status_code: null,
+                    path: new URL(page.url).pathname,
+                    meta_description: page.meta_tags?.description || null,
+                    h1: page.headings?.h1?.[0] || null,
+                    content_summary: null
+                } : null}
+                open={editSheetOpen}
+                onOpenChange={(open) => {
+                    setEditSheetOpen(open)
+                    if (!open) refetchPage() // Refresh data when sheet closes
+                }}
+            />
         </div >
     )
 }
