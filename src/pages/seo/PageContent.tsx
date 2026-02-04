@@ -108,6 +108,28 @@ function ReasoningSection({ reasoning, label = "Why" }: { reasoning: string; lab
     )
 }
 
+// Heading badge component for consistent styling across tabs
+function HeadingBadge({ level }: { level: string }) {
+    const levelLower = level.toLowerCase()
+    const colorClass = levelLower === 'h1' ? 'bg-blue-500 text-white' :
+        levelLower === 'h2' ? 'bg-green-500 text-white' :
+            levelLower === 'h3' ? 'bg-purple-500 text-white' :
+                levelLower === 'h4' ? 'bg-orange-500 text-white' :
+                    'bg-gray-500 text-white'
+
+    return (
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase ${colorClass}`}>
+            {level.toUpperCase()}
+        </span>
+    )
+}
+
+// Extract heading level from location string like "H2: 'What is AquaGold Treatment?'"
+function extractHeadingLevel(location: string): string | null {
+    const match = location.match(/^(H[1-4]):/i)
+    return match ? match[1].toUpperCase() : null
+}
+
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
 function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: number }) {
     const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -1070,6 +1092,10 @@ ${schema?.overall_reasoning || 'N/A'}
                                                                         ) : (
                                                                             <AlertCircle className="h-4 w-4 text-red-500" />
                                                                         )}
+                                                                        {/* Show heading badge if location indicates heading level */}
+                                                                        {section.location && extractHeadingLevel(section.location) && (
+                                                                            <HeadingBadge level={extractHeadingLevel(section.location)!} />
+                                                                        )}
                                                                         <span className="font-medium">{section.section_name}</span>
                                                                         <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
                                                                             {section.required ? 'Required' : 'Optional'}
@@ -1080,8 +1106,11 @@ ${schema?.overall_reasoning || 'N/A'}
                                                                             </Badge>
                                                                         )}
                                                                     </div>
+                                                                    {/* Show the heading text from location without the H2: prefix */}
                                                                     {section.location && (
-                                                                        <p className="text-xs text-muted-foreground mt-1">📍 {section.location}</p>
+                                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                                            📍 {section.location.replace(/^H[1-4]:\s*/i, '').replace(/^['"]|['"]$/g, '')}
+                                                                        </p>
                                                                     )}
                                                                     {section.content_summary && (
                                                                         <p className="text-sm text-muted-foreground mt-1">{section.content_summary}</p>
