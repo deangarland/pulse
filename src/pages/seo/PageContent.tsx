@@ -225,17 +225,16 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
             .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
     }, [html])
 
-    // Process the HTML content AFTER rendering
+    // Set innerHTML and process content in a single useEffect
     useEffect(() => {
         const node = containerRef.current
         if (!node) return
 
-        // Process the HTML content
-        // Add badges to headings
-        node.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
-            // Skip if already has a badge
-            if (heading.querySelector('.heading-badge')) return
+        // Set the HTML content manually (not via dangerouslySetInnerHTML)
+        node.innerHTML = sanitizedHtml
 
+        // Now add badges to headings
+        node.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
             const level = heading.tagName.toLowerCase()
             const badge = document.createElement('span')
             badge.className = `heading-badge inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase mr-2 ${level === 'h1' ? 'bg-blue-500 text-white' :
@@ -290,7 +289,6 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
 
         // Detect and style FAQ sections
         node.querySelectorAll('[itemtype*="FAQPage"], .faq, [class*="faq"], [id*="faq"]').forEach(faq => {
-            if (faq.querySelector('.faq-badge')) return
             const faqBadge = document.createElement('div')
             faqBadge.className = 'faq-badge inline-flex items-center px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-bold mb-2'
             faqBadge.textContent = '📋 FAQ SECTION'
@@ -312,7 +310,6 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
             <div
                 ref={containerRef}
                 className="bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto"
-                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
         </div>
     )
