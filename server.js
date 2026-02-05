@@ -243,6 +243,16 @@ function getProviderForModel(modelName) {
     return 'openai' // default fallback
 }
 
+// Strip markdown code blocks from AI responses (Claude wraps JSON in ```json ... ```)
+function stripMarkdownCodeBlock(content) {
+    if (!content) return content
+    // Remove ```json or ``` from start and ``` from end
+    return content
+        .replace(/^```(?:json)?\s*\n?/i, '')
+        .replace(/\n?```\s*$/i, '')
+        .trim()
+}
+
 // Unified AI call function supporting multiple providers
 async function callAI({ model, systemPrompt, userPrompt, temperature = 0.7, jsonMode = false }) {
     const provider = getProviderForModel(model)
@@ -2012,10 +2022,10 @@ Respond in this exact JSON format:
             success: true
         })
 
-        // Parse response
+        // Parse response (strip markdown code blocks that Claude sometimes adds)
         let analysis
         try {
-            analysis = JSON.parse(content)
+            analysis = JSON.parse(stripMarkdownCodeBlock(content))
         } catch (e) {
             return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
         }
@@ -2336,10 +2346,10 @@ Respond in this JSON format:
             success: true
         })
 
-        // Parse response
+        // Parse response (strip markdown code blocks that Claude sometimes adds)
         let enhancement
         try {
-            enhancement = JSON.parse(content)
+            enhancement = JSON.parse(stripMarkdownCodeBlock(content))
         } catch (e) {
             return res.status(500).json({ error: 'Failed to parse AI response', raw: content })
         }
