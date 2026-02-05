@@ -52,21 +52,25 @@ const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GE
 // AI Model Pricing (per 1M tokens, in cents)
 // ============================================
 const MODEL_PRICING = {
-    // OpenAI
+    // OpenAI - GPT-5
+    'gpt-5': { input: 500, output: 1500 },
+    'gpt-5-mini': { input: 75, output: 300 },
+    // OpenAI - Reasoning
     'o3-mini': { input: 110, output: 440 },
     'o1': { input: 1500, output: 6000 },
     'o1-mini': { input: 300, output: 1200 },
+    // OpenAI - GPT-4.5/4o
     'gpt-4.5-preview': { input: 250, output: 1000 },
     'gpt-4o': { input: 250, output: 1000 },
     'gpt-4o-mini': { input: 15, output: 60 },
+    // OpenAI - GPT-4/3.5
     'gpt-4-turbo': { input: 1000, output: 3000 },
-    'gpt-4-turbo-preview': { input: 1000, output: 3000 },
     'gpt-4': { input: 3000, output: 6000 },
     'gpt-3.5-turbo': { input: 50, output: 150 },
-    // Anthropic Claude 4.5
-    'claude-opus-4-5-20251101': { input: 500, output: 2500 },
-    'claude-sonnet-4-5-20250929': { input: 300, output: 1500 },
-    'claude-haiku-4-5-20251001': { input: 100, output: 500 },
+    // Anthropic Claude 4 (correct model IDs)
+    'claude-opus-4-20250514': { input: 1500, output: 7500 },
+    'claude-sonnet-4-20250514': { input: 300, output: 1500 },
+    'claude-3-5-haiku-20241022': { input: 80, output: 400 },
     // Google Gemini 2.5
     'gemini-2.5-pro': { input: 125, output: 1000 },
     'gemini-2.5-flash': { input: 15, output: 60 },
@@ -233,16 +237,17 @@ app.post('/api/generate-recommendations', async (req, res) => {
             return res.status(400).json({ error: 'pageId is required' })
         }
 
-        // Model mappings by provider
+        // Model mappings by provider (synced with src/lib/models.ts)
         const OPENAI_MODELS = [
+            'gpt-5', 'gpt-5-mini',
             'o3-mini', 'o1', 'o1-mini',
             'gpt-4.5-preview',
             'gpt-4o', 'gpt-4o-mini',
-            'gpt-4-turbo', 'gpt-4-turbo-preview', 'gpt-4',
+            'gpt-4-turbo', 'gpt-4',
             'gpt-3.5-turbo'
         ]
         const ANTHROPIC_MODELS = [
-            'claude-opus-4-5-20251101', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'
+            'claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'
         ]
         const GEMINI_MODELS = [
             'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
