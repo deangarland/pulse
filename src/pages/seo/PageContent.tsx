@@ -1034,6 +1034,22 @@ export default function PageContent() {
         summary: string
     } | null>(null)
 
+    // Load saved analysis from page.enhanced_content when page changes
+    useEffect(() => {
+        if (page?.enhanced_content?.section_analysis && page.enhanced_content.overall_score !== undefined) {
+            // Reconstruct contentAnalysis from saved data
+            setContentAnalysis({
+                sections: page.enhanced_content.section_analysis,
+                missing_sections: page.enhanced_content.missing_sections || [],
+                overall_score: page.enhanced_content.overall_score,
+                summary: page.enhanced_content.analysis_summary || ''
+            })
+        } else {
+            // Clear analysis if page has no saved data
+            setContentAnalysis(null)
+        }
+    }, [page?.id, page?.enhanced_content?.analyzed_at])
+
     // Content analysis mutation
     const analyzeContentMutation = useMutation({
         mutationFn: async ({ pageId, pageType }: { pageId: string; pageType?: string }) => {
