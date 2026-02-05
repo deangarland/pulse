@@ -219,7 +219,90 @@ function buildMetaPrompt(promptTemplate, page) {
         .replace('{{headings}}', headingsText)
 }
 
-// API Routes
+// Model mappings by provider (synced with src/lib/models.ts)
+const OPENAI_MODELS = [
+    'gpt-5', 'gpt-5-mini',
+    'o3-mini', 'o1', 'o1-mini',
+    'gpt-4.5-preview',
+    'gpt-4o', 'gpt-4o-mini',
+    'gpt-4-turbo', 'gpt-4',
+    'gpt-3.5-turbo'
+]
+const ANTHROPIC_MODELS = [
+    'claude-opus-4-20250514', 'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'
+]
+const GEMINI_MODELS = [
+    'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'
+]
+
+// Get provider from model name
+function getProviderForModel(modelName) {
+    if (OPENAI_MODELS.includes(modelName)) return 'openai'
+    if (ANTHROPIC_MODELS.includes(modelName)) return 'anthropic'
+    if (GEMINI_MODELS.includes(modelName)) return 'gemini'
+    return 'openai' // default fallback
+}
+
+// Unified AI call function supporting multiple providers
+async function callAI({ model, systemPrompt, userPrompt, temperature = 0.7, jsonMode = false }) {
+    const provider = getProviderForModel(model)
+    const startTime = Date.now()
+    let content, inputTokens = 0, outputTokens = 0
+
+    if (provider === 'openai') {
+        if (!openai) throw new Error('OpenAI API key not configured')
+        const response = await openai.chat.completions.create({
+            model,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            temperature,
+            ...(jsonMode && { response_format: { type: 'json_object' } })
+        })
+        content = response.choices[0]?.message?.content
+        inputTokens = response.usage?.prompt_tokens || 0
+        outputTokens = response.usage?.completion_tokens || 0
+    } else if (provider === 'anthropic') {
+        if (!anthropic) throw new Error('Anthropic API key not configured')
+        const response = await anthropic.messages.create({
+            model,
+            max_tokens: 8000,
+            system: systemPrompt,
+            messages: [
+                { role: 'user', content: userPrompt + (jsonMode ? '\n\nRespond with valid JSON only.' : '') }
+            ]
+        })
+        content = response.content[0]?.text
+        inputTokens = response.usage?.input_tokens || 0
+        outputTokens = response.usage?.output_tokens || 0
+    } else if (provider === 'gemini') {
+        if (!genAI) throw new Error('Gemini API key not configured')
+        const geminiModel = genAI.getGenerativeModel({ model })
+        const result = await geminiModel.generateContent({
+            contents: [
+                { role: 'user', parts: [{ text: systemPrompt + '\n\n' + userPrompt }] }
+            ],
+            generationConfig: {
+                temperature,
+                maxOutputTokens: 8000,
+                ...(jsonMode && { responseMimeType: 'application/json' })
+            }
+        })
+        content = result.response.text()
+        const usageMetadata = result.response.usageMetadata
+        inputTokens = usageMetadata?.promptTokenCount || 0
+        outputTokens = usageMetadata?.candidatesTokenCount || 0
+    }
+
+    return {
+        content,
+        provider,
+        inputTokens,
+        outputTokens,
+        durationMs: Date.now() - startTime
+    }
+}
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -1897,32 +1980,21 @@ Respond in this exact JSON format:
 }`
 
 
-        // Use OpenAI for analysis
-        if (!openai) {
-            return res.status(400).json({ error: 'OpenAI API key not configured' })
-        }
-
         // Fetch prompt from database
         const promptData = await getPrompt('content_analysis')
         const systemPrompt = promptData?.system_prompt || template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.'
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
 
-        const startTime = Date.now()
-        const response = await openai.chat.completions.create({
+        // Call AI using unified multi-provider function
+        const aiResult = await callAI({
             model: selectedModel,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: analysisPrompt }
-            ],
+            systemPrompt,
+            userPrompt: analysisPrompt,
             temperature: 0.3,
-            response_format: { type: 'json_object' }
+            jsonMode: true
         })
 
-        const content = response.choices[0]?.message?.content
-        const inputTokens = response.usage?.prompt_tokens || 0
-        const outputTokens = response.usage?.completion_tokens || 0
-        const requestDurationMs = Date.now() - startTime
-
+        const content = aiResult.content
         if (!content) {
             return res.status(500).json({ error: 'No response from AI' })
         }
@@ -1932,11 +2004,11 @@ Respond in this exact JSON format:
             action: 'content_analysis',
             pageId,
             pageUrl: page.url,
-            provider: 'openai',
+            provider: aiResult.provider,
             model: selectedModel,
-            inputTokens,
-            outputTokens,
-            requestDurationMs,
+            inputTokens: aiResult.inputTokens,
+            outputTokens: aiResult.outputTokens,
+            requestDurationMs: aiResult.durationMs,
             success: true
         })
 
@@ -2237,26 +2309,16 @@ Respond in this JSON format:
         const systemPrompt = promptData?.system_prompt || 'You are an expert content writer who creates engaging, SEO-optimized content for websites.'
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
 
-        if (!openai) {
-            return res.status(400).json({ error: 'OpenAI API key not configured' })
-        }
-
-        const startTime = Date.now()
-        const response = await openai.chat.completions.create({
+        // Call AI using unified multi-provider function
+        const aiResult = await callAI({
             model: selectedModel,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: enhancePrompt }
-            ],
+            systemPrompt,
+            userPrompt: enhancePrompt,
             temperature: 0.7,
-            response_format: { type: 'json_object' }
+            jsonMode: true
         })
 
-        const content = response.choices[0]?.message?.content
-        const inputTokens = response.usage?.prompt_tokens || 0
-        const outputTokens = response.usage?.completion_tokens || 0
-        const requestDurationMs = Date.now() - startTime
-
+        const content = aiResult.content
         if (!content) {
             return res.status(500).json({ error: 'No response from AI' })
         }
@@ -2266,11 +2328,11 @@ Respond in this JSON format:
             action: 'section_enhancement',
             pageId,
             pageUrl: page.url,
-            provider: 'openai',
+            provider: aiResult.provider,
             model: selectedModel,
-            inputTokens,
-            outputTokens,
-            requestDurationMs,
+            inputTokens: aiResult.inputTokens,
+            outputTokens: aiResult.outputTokens,
+            requestDurationMs: aiResult.durationMs,
             success: true
         })
 
