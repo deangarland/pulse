@@ -1848,11 +1848,17 @@ Headings: ${JSON.stringify(page.headings || {})}
 HTML Content:
 ${(page.cleaned_html || page.main_content || '').substring(0, 15000)}
 
+IMPORTANT: For each section, determine if it should be enhanced:
+- Required sections should ALWAYS be enhanced
+- Optional sections should ALSO be enhanced IF they exist in the original content
+- This means: if the original page has FAQs, testimonials, pricing, or any other optional content, it MUST be preserved and enhanced
+
 For each expected section, determine:
 1. Is it present? (found: true/false)
 2. If found, what heading or location identifies it?
 3. A brief summary of the content (if found)
-4. If missing and required, provide a recommendation
+4. Should it be enhanced? (should_enhance: true if required OR if found in original)
+5. If missing and required, provide a recommendation
 
 Respond in this exact JSON format:
 {
@@ -1862,16 +1868,29 @@ Respond in this exact JSON format:
             "section_name": "Hero Section",
             "required": true,
             "found": true,
+            "should_enhance": true,
             "location": "First H1: 'Botox Treatments'",
             "content_summary": "Hero with title and tagline about Botox treatments",
             "quality_score": 8,
             "recommendation": null
+        },
+        {
+            "section_id": "faq",
+            "section_name": "FAQ Section",
+            "required": false,
+            "found": true,
+            "should_enhance": true,
+            "location": "H2: 'Frequently Asked Questions'",
+            "content_summary": "5 Q&A pairs about the procedure",
+            "quality_score": 7,
+            "recommendation": "Could add more questions about recovery time"
         }
     ],
-    "missing_sections": ["faq", "pricing"],
+    "missing_sections": ["pricing"],
     "overall_score": 75,
-    "summary": "Page has 6 of 10 expected sections. Missing FAQ and pricing sections that could improve SEO."
+    "summary": "Page has 6 of 10 expected sections. Missing pricing section that could improve SEO."
 }`
+
 
         // Use OpenAI for analysis (can extend to other providers)
         if (!openai) {
@@ -2103,6 +2122,13 @@ ${sectionContent}` : `The section is MISSING. Generate new content for it based 
 
 ${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
 
+CRITICAL REQUIREMENTS:
+1. Your enhanced content MUST be AT LEAST as thorough and comprehensive as the original
+2. If the original includes FAQs, you MUST include FAQs in your enhanced version
+3. If the original includes testimonials, statistics, pricing, or any other specific content elements, you MUST preserve and enhance them
+4. Do NOT remove or simplify content - ENHANCE and IMPROVE it while keeping all the valuable elements
+5. If the original has 5 FAQ items, your enhanced version should have at least 5 (ideally more/better)
+
 IMPORTANT: Your enhanced_content MUST be properly formatted HTML, not plain text. Use these HTML tags:
 - <h1> for main titles
 - <h2> for section headings  
@@ -2124,6 +2150,7 @@ Respond in this JSON format:
     "implementation_notes": "Clear instructions on where and how to implement this content",
     "changes_made": ["List of specific improvements made"],
     "reasoning": "Explanation of why these changes improve the content"
+
 }`
 
         // Use specified model or default

@@ -1388,9 +1388,55 @@ ${schema?.overall_reasoning || 'N/A'}
                                                     </div>
                                                 </div>
 
+                                                {/* Enhance All Found Sections Button */}
+                                                {(() => {
+                                                    const foundSections = contentAnalysis.sections.filter(s =>
+                                                        s.found && !page.enhanced_content?.sections?.[s.section_id]?.enhanced
+                                                    )
+                                                    return foundSections.length > 0 && (
+                                                        <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                            <div className="text-sm">
+                                                                <span className="font-medium text-blue-800">{foundSections.length} sections found in original</span>
+                                                                <span className="text-blue-600 ml-1">ready to enhance</span>
+                                                            </div>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="default"
+                                                                onClick={async () => {
+                                                                    for (const section of foundSections) {
+                                                                        try {
+                                                                            await enhanceSectionMutation.mutateAsync({
+                                                                                pageId: page.id,
+                                                                                sectionId: section.section_id,
+                                                                                sectionContent: section.content_summary
+                                                                            })
+                                                                        } catch (err) {
+                                                                            console.error(`Failed to enhance ${section.section_id}:`, err)
+                                                                        }
+                                                                    }
+                                                                }}
+                                                                disabled={enhanceSectionMutation.isPending}
+                                                            >
+                                                                {enhanceSectionMutation.isPending ? (
+                                                                    <>
+                                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                        Enhancing...
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Sparkles className="w-4 h-4 mr-2" />
+                                                                        Enhance All
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    )
+                                                })()}
+
                                                 {/* Sections List */}
                                                 <div className="space-y-3">
                                                     <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Enhanced Sections</h4>
+
                                                     {contentAnalysis.sections.map((section) => (
                                                         <EnhancedSectionCard
                                                             key={section.section_id}
