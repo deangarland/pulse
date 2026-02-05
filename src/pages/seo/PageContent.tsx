@@ -151,12 +151,6 @@ function extractHeadingLevel(location: string): string | null {
     return match ? match[1].toUpperCase() : null
 }
 
-// Extract heading text from location string like "H2: 'What is AquaGold Treatment?'"
-function extractHeadingText(location: string): string | null {
-    // Remove the H1/H2/H3/H4: prefix and quotes
-    const match = location.match(/^H[1-4]:\s*['"]?(.+?)['"]?\s*$/i)
-    return match ? match[1] : null
-}
 
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
 function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = false }: { html: string; wordCount?: number; showHeader?: boolean; hideImages?: boolean }) {
