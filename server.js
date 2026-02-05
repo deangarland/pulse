@@ -2070,8 +2070,8 @@ Respond in this exact JSON format:
                 sections: template.sections
             },
             analysis,
-            tokens: { input: inputTokens, output: outputTokens },
-            durationMs: requestDurationMs
+            tokens: { input: aiResult.inputTokens, output: aiResult.outputTokens },
+            durationMs: aiResult.durationMs
         })
 
     } catch (error) {
@@ -2394,8 +2394,8 @@ Respond in this JSON format:
         res.json({
             success: true,
             enhancement,
-            tokens: { input: inputTokens, output: outputTokens },
-            durationMs: requestDurationMs
+            tokens: { input: aiResult.inputTokens, output: aiResult.outputTokens },
+            durationMs: aiResult.durationMs
         })
 
     } catch (error) {
