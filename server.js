@@ -2202,22 +2202,6 @@ app.post('/api/enhance-section', async (req, res) => {
         // Get the section analysis to find where the section is located
         const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
 
-        // Get already-enhanced sections to avoid redundancy
-        const existingSections = page.enhanced_content?.sections || {}
-        const alreadyEnhancedList = Object.entries(existingSections)
-            .filter(([id, data]) => id !== sectionId && data?.enhanced)
-            .map(([id, data]) => {
-                // Extract a summary of what's in each section (first 200 chars, strip HTML)
-                const text = (data.enhanced || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-                return `- ${id}: ${text.substring(0, 200)}...`
-            })
-            .join('\n')
-
-        const hasEnhancedSections = alreadyEnhancedList.length > 0
-        const enhancedFAQ = Object.keys(existingSections).some(id => id.toLowerCase().includes('faq'))
-        const enhancedHero = Object.keys(existingSections).includes('hero')
-        const enhancedCTA = Object.keys(existingSections).some(id => id.toLowerCase().includes('cta'))
-
         // Try to extract the actual section content from the page HTML
         let actualSectionContent = sectionContent || ''
         const cleanedHtml = page.cleaned_html || page.main_content || ''
@@ -2253,77 +2237,98 @@ app.post('/api/enhance-section', async (req, res) => {
             }
         }
 
-        // Build enhancement prompt with the ACTUAL section content and anti-redundancy context
-        const enhancePrompt = `You are an expert content writer for ${page.page_type.toLowerCase()} pages.
 
-SECTION TO ENHANCE: ${sectionDef.name}
-Section Purpose: ${sectionDef.description}
+        // Build context about already-enhanced sections for anti-redundancy
+        const existingSections = page.enhanced_content?.sections || {}
 
-PAGE CONTEXT:
-Title: ${page.title || 'Untitled'}
-URL: ${page.url}
+        // Extract what's already been covered in other sections
+        let alreadyEnhancedContext = ''
+        let forbiddenPhrases = ''
 
-${hasEnhancedSections ? `ALREADY ENHANCED SECTIONS (DO NOT REPEAT THIS CONTENT):
-${alreadyEnhancedList}
-` : ''}
-ANTI-REDUNDANCY RULES (CRITICAL - MUST FOLLOW):
-1. Do NOT start with an intro like "At [Business Name]..." or "Welcome to..." - that belongs in the Hero section ONLY
-2. Do NOT repeat information already covered in other sections listed above
-3. Do NOT add FAQ items to this section${enhancedFAQ ? ' - there is already an FAQ section enhanced' : ' unless this IS the FAQ section'}
-4. Do NOT add a call-to-action${enhancedCTA ? ' - there is already a CTA section enhanced' : ' unless this IS the CTA section'}
-5. Focus ONLY on this section's unique purpose: ${sectionDef.description}
-6. The business/brand name should appear at MOST once in this section (preferably zero for non-hero sections)
-7. Each section should have DISTINCT content - no overlapping phrases or repeated selling points
+        const otherSections = Object.entries(existingSections)
+            .filter(([id, data]) => id !== sectionId && data?.enhanced)
 
-${actualSectionContent ? `ORIGINAL SECTION CONTENT (from the actual page):
-${actualSectionContent}` : `The section is MISSING. Generate new content for it based on the page context.`}
+        if (otherSections.length > 0) {
+            // Build detailed summaries of what each section covers
+            const sectionSummaries = otherSections.map(([id, data]) => {
+                const text = (data.enhanced || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+                return `- ${data.section_name || id}: ${text.substring(0, 300)}...`
+            }).join('\n')
 
-${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
+            alreadyEnhancedContext = `ALREADY ENHANCED SECTIONS (content you must NOT repeat):
+${sectionSummaries}`
 
-CONTENT PRESERVATION REQUIREMENTS (MUST FOLLOW):
-1. PRESERVE EXACT ORIGINAL QUESTIONS - If enhancing FAQs, keep the EXACT same questions from the original. Do NOT replace them with generic questions.
-2. Your enhanced content MUST be AT LEAST as thorough and comprehensive as the original
-3. If the original includes FAQs, you MUST include the same number of FAQ items with the SAME questions (enhanced answers are OK)
-4. If the original includes testimonials, statistics, pricing, or any other specific content elements, you MUST preserve and enhance them
-5. Do NOT remove, simplify, or replace content - ENHANCE and IMPROVE it while keeping all the original elements
-6. If original has 6 questions about "needle size", "cost", "pain level" - your version must have those SAME 6 questions
+            // Extract commonly repeated phrases from all enhanced content
+            const allEnhancedText = otherSections
+                .map(([id, data]) => data.enhanced || '')
+                .join(' ')
+                .replace(/<[^>]*>/g, ' ')
+                .toLowerCase()
 
-IMPORTANT: Your enhanced_content MUST be properly formatted HTML, not plain text. Use these HTML tags:
-- <h1> for main titles
-- <h2> for section headings  
-- <h3> for sub-headings or individual FAQ questions
-- <p> for paragraphs and FAQ answers
-- <strong> for emphasis
-- <ul>/<li> for lists
-- For FAQs specifically, use <h3> for questions and <p> for answers, OR preserve the original <details>/<summary> structure if present
+            // Find location mentions
+            const locationPattern = /(?:in|at|near)\s+([A-Za-z\s]+,\s*[A-Z]{2})/gi
+            const locationMatches = allEnhancedText.match(locationPattern) || []
 
-Example enhanced FAQ format:
-"<h2>Frequently Asked Questions</h2><h3>What is the Cost of Aquagold Treatment?</h3><p>The Aquagold treatment typically costs $XXX per session...</p><h3>Is Aquagold Facial Painful?</h3><p>Most patients experience minimal discomfort...</p>"
+            // Find business name mentions (from page title or URL)
+            const businessName = page.title?.split(/[-|]/)[0]?.trim() || ''
+            const businessMentioned = businessName && allEnhancedText.includes(businessName.toLowerCase())
 
+            // Build forbidden list
+            const forbidden = []
+            if (locationMatches.length > 0) {
+                forbidden.push(`Location phrases already used: "${locationMatches[0]}" - do not repeat in this section`)
+            }
+            if (businessMentioned) {
+                forbidden.push(`Business name "${businessName}" already appears - do not use again`)
+            }
 
-Respond in this JSON format:
-{
-    "section_id": "${sectionId}",
-    "section_name": "${sectionDef.name}",
-    "original_content": "The original content if provided",
-    "enhanced_content": "Your improved HTML content with proper tags like <h2>, <p>, <ul>, etc.",
-    "is_new_section": ${!actualSectionContent},
-    "implementation_notes": "Clear instructions on where and how to implement this content",
-    "changes_made": ["List of specific improvements made"],
-    "reasoning": "Explanation of why these changes improve the content"
+            // Extract repeated benefit keywords
+            const benefitKeywords = ['minimal downtime', 'radiant', 'rejuvenate', 'youthful', 'glow', 'innovative', 'cutting-edge', 'advanced']
+            const usedBenefits = benefitKeywords.filter(kw => allEnhancedText.includes(kw))
+            if (usedBenefits.length > 0) {
+                forbidden.push(`These phrases are already used in other sections - use different vocabulary: ${usedBenefits.join(', ')}`)
+            }
 
-}`
+            if (forbidden.length > 0) {
+                forbiddenPhrases = `FORBIDDEN (already used elsewhere on this page):
+${forbidden.map(f => `- ${f}`).join('\n')}`
+            }
+        }
 
-        // Fetch prompt from database
+        // Determine section-specific flags
+        const isHeroSection = sectionId === 'hero'
+        const isCTASection = sectionId === 'cta' || sectionId.includes('cta')
+        const isFAQSection = sectionId === 'faq' || sectionId.includes('faq')
+
+        // Extract business name and location from page data
+        const businessName = page.title?.split(/[-|]/)[0]?.trim() || 'this business'
+        const locationMatch = page.url?.match(/(?:saint[-\s]?johns|st[-\s]?augustine|jacksonville)/i)
+        const location = locationMatch ? locationMatch[0] : ''
+
+        // Fetch prompt template from database
         const promptData = await getPrompt('section_enhancement')
-        const systemPrompt = promptData?.system_prompt || 'You are an expert content writer who creates engaging, SEO-optimized content for websites.'
+        const systemPrompt = promptData?.system_prompt || 'You are an expert content writer.'
+        const userPromptTemplate = promptData?.user_prompt_template || ''
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
+
+        // Substitute variables in the user prompt template
+        const userPrompt = userPromptTemplate
+            .replace(/\{\{section_name\}\}/g, sectionDef.name)
+            .replace(/\{\{section_id\}\}/g, sectionId)
+            .replace(/\{\{section_description\}\}/g, sectionDef.description || '')
+            .replace(/\{\{page_title\}\}/g, page.title || '')
+            .replace(/\{\{page_url\}\}/g, page.url || '')
+            .replace(/\{\{business_name\}\}/g, businessName)
+            .replace(/\{\{location\}\}/g, location)
+            .replace(/\{\{already_enhanced_context\}\}/g, alreadyEnhancedContext)
+            .replace(/\{\{forbidden_phrases\}\}/g, forbiddenPhrases)
+            .replace(/\{\{original_content\}\}/g, actualSectionContent || 'Section was missing - generate new content.')
 
         // Call AI using unified multi-provider function
         const aiResult = await callAI({
             model: selectedModel,
             systemPrompt,
-            userPrompt: enhancePrompt,
+            userPrompt,
             temperature: 0.7,
             jsonMode: true
         })
