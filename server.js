@@ -2120,6 +2120,22 @@ app.post('/api/enhance-section', async (req, res) => {
         // Get the section analysis to find where the section is located
         const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
 
+        // Get already-enhanced sections to avoid redundancy
+        const existingSections = page.enhanced_content?.sections || {}
+        const alreadyEnhancedList = Object.entries(existingSections)
+            .filter(([id, data]) => id !== sectionId && data?.enhanced)
+            .map(([id, data]) => {
+                // Extract a summary of what's in each section (first 200 chars, strip HTML)
+                const text = (data.enhanced || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+                return `- ${id}: ${text.substring(0, 200)}...`
+            })
+            .join('\n')
+
+        const hasEnhancedSections = alreadyEnhancedList.length > 0
+        const enhancedFAQ = Object.keys(existingSections).some(id => id.toLowerCase().includes('faq'))
+        const enhancedHero = Object.keys(existingSections).includes('hero')
+        const enhancedCTA = Object.keys(existingSections).some(id => id.toLowerCase().includes('cta'))
+
         // Try to extract the actual section content from the page HTML
         let actualSectionContent = sectionContent || ''
         const cleanedHtml = page.cleaned_html || page.main_content || ''
@@ -2155,7 +2171,7 @@ app.post('/api/enhance-section', async (req, res) => {
             }
         }
 
-        // Build enhancement prompt with the ACTUAL section content
+        // Build enhancement prompt with the ACTUAL section content and anti-redundancy context
         const enhancePrompt = `You are an expert content writer for ${page.page_type.toLowerCase()} pages.
 
 SECTION TO ENHANCE: ${sectionDef.name}
@@ -2165,12 +2181,24 @@ PAGE CONTEXT:
 Title: ${page.title || 'Untitled'}
 URL: ${page.url}
 
+${hasEnhancedSections ? `ALREADY ENHANCED SECTIONS (DO NOT REPEAT THIS CONTENT):
+${alreadyEnhancedList}
+` : ''}
+ANTI-REDUNDANCY RULES (CRITICAL - MUST FOLLOW):
+1. Do NOT start with an intro like "At [Business Name]..." or "Welcome to..." - that belongs in the Hero section ONLY
+2. Do NOT repeat information already covered in other sections listed above
+3. Do NOT add FAQ items to this section${enhancedFAQ ? ' - there is already an FAQ section enhanced' : ' unless this IS the FAQ section'}
+4. Do NOT add a call-to-action${enhancedCTA ? ' - there is already a CTA section enhanced' : ' unless this IS the CTA section'}
+5. Focus ONLY on this section's unique purpose: ${sectionDef.description}
+6. The business/brand name should appear at MOST once in this section (preferably zero for non-hero sections)
+7. Each section should have DISTINCT content - no overlapping phrases or repeated selling points
+
 ${actualSectionContent ? `ORIGINAL SECTION CONTENT (from the actual page):
 ${actualSectionContent}` : `The section is MISSING. Generate new content for it based on the page context.`}
 
 ${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
 
-CRITICAL REQUIREMENTS (MUST FOLLOW):
+CONTENT PRESERVATION REQUIREMENTS (MUST FOLLOW):
 1. PRESERVE EXACT ORIGINAL QUESTIONS - If enhancing FAQs, keep the EXACT same questions from the original. Do NOT replace them with generic questions.
 2. Your enhanced content MUST be AT LEAST as thorough and comprehensive as the original
 3. If the original includes FAQs, you MUST include the same number of FAQ items with the SAME questions (enhanced answers are OK)
