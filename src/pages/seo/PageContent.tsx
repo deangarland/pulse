@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -214,81 +214,7 @@ function extractSectionFromHtml(cleanedHtml: string | null, sectionLocation: str
 
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
 function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: number }) {
-    const containerRef = useCallback((node: HTMLDivElement | null) => {
-        if (!node) return
-
-        // Process the HTML content after mounting
-        const processContent = () => {
-            // Add badges to headings
-            node.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
-                const level = heading.tagName.toLowerCase()
-                const badge = document.createElement('span')
-                badge.className = `inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase mr-2 ${level === 'h1' ? 'bg-blue-500 text-white' :
-                    level === 'h2' ? 'bg-green-500 text-white' :
-                        level === 'h3' ? 'bg-purple-500 text-white' :
-                            'bg-orange-500 text-white'
-                    }`
-                badge.textContent = level.toUpperCase()
-                heading.insertBefore(badge, heading.firstChild)
-                const headingClasses = (
-                    level === 'h1' ? 'text-xl font-bold mt-4' :
-                        level === 'h2' ? 'text-lg font-semibold mt-4' :
-                            level === 'h3' ? 'text-base font-medium mt-3' :
-                                'text-sm font-medium mt-2'
-                ).split(' ')
-                heading.classList.add(...headingClasses)
-            })
-
-            // Style paragraphs
-            node.querySelectorAll('p').forEach(p => {
-                p.classList.add('text-sm', 'leading-relaxed', 'my-2')
-            })
-
-            // Style bullet lists
-            node.querySelectorAll('ul, ol').forEach(list => {
-                list.classList.add('my-3', 'ml-4')
-                if (list.tagName === 'UL') {
-                    list.classList.add('list-disc')
-                } else {
-                    list.classList.add('list-decimal')
-                }
-            })
-            node.querySelectorAll('li').forEach(li => {
-                li.classList.add('text-sm', 'leading-relaxed', 'my-1', 'ml-4')
-            })
-
-            // Replace images with placeholders showing alt text
-            node.querySelectorAll('img').forEach(img => {
-                const alt = img.getAttribute('alt') || 'Image'
-                const src = img.getAttribute('src') || ''
-                const placeholder = document.createElement('div')
-                placeholder.className = 'my-3 p-4 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center min-h-[100px]'
-                placeholder.innerHTML = `
-                    <div class="text-slate-400 mb-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                    </div>
-                    <div class="text-xs font-medium text-slate-600 text-center px-2">${alt}</div>
-                    ${src ? `<div class="text-xs text-slate-400 truncate max-w-[200px] mt-1">${src.split('/').pop()}</div>` : ''}
-                `
-                img.replaceWith(placeholder)
-            })
-
-            // Detect and style FAQ sections
-            node.querySelectorAll('[itemtype*="FAQPage"], .faq, [class*="faq"], [id*="faq"]').forEach(faq => {
-                const faqBadge = document.createElement('div')
-                faqBadge.className = 'inline-flex items-center px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-bold mb-2'
-                faqBadge.textContent = '📋 FAQ SECTION'
-                faq.insertBefore(faqBadge, faq.firstChild)
-            })
-
-            // Also detect FAQ by looking for question patterns
-            node.querySelectorAll('details, [class*="accordion"]').forEach(accordion => {
-                accordion.classList.add('my-2', 'p-2', 'bg-slate-50', 'rounded', 'border')
-            })
-        }
-
-        processContent()
-    }, [html])
+    const containerRef = useRef<HTMLDivElement>(null)
 
     // Sanitize and prepare HTML
     const sanitizedHtml = useMemo(() => {
@@ -298,6 +224,84 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
             .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
     }, [html])
+
+    // Process the HTML content AFTER rendering
+    useEffect(() => {
+        const node = containerRef.current
+        if (!node) return
+
+        // Process the HTML content
+        // Add badges to headings
+        node.querySelectorAll('h1, h2, h3, h4').forEach(heading => {
+            // Skip if already has a badge
+            if (heading.querySelector('.heading-badge')) return
+
+            const level = heading.tagName.toLowerCase()
+            const badge = document.createElement('span')
+            badge.className = `heading-badge inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase mr-2 ${level === 'h1' ? 'bg-blue-500 text-white' :
+                level === 'h2' ? 'bg-green-500 text-white' :
+                    level === 'h3' ? 'bg-purple-500 text-white' :
+                        'bg-orange-500 text-white'
+                }`
+            badge.textContent = level.toUpperCase()
+            heading.insertBefore(badge, heading.firstChild)
+            const headingClasses = (
+                level === 'h1' ? 'text-xl font-bold mt-4' :
+                    level === 'h2' ? 'text-lg font-semibold mt-4' :
+                        level === 'h3' ? 'text-base font-medium mt-3' :
+                            'text-sm font-medium mt-2'
+            ).split(' ')
+            heading.classList.add(...headingClasses)
+        })
+
+        // Style paragraphs
+        node.querySelectorAll('p').forEach(p => {
+            p.classList.add('text-sm', 'leading-relaxed', 'my-2')
+        })
+
+        // Style bullet lists
+        node.querySelectorAll('ul, ol').forEach(list => {
+            list.classList.add('my-3', 'ml-4')
+            if (list.tagName === 'UL') {
+                list.classList.add('list-disc')
+            } else {
+                list.classList.add('list-decimal')
+            }
+        })
+        node.querySelectorAll('li').forEach(li => {
+            li.classList.add('text-sm', 'leading-relaxed', 'my-1', 'ml-4')
+        })
+
+        // Replace images with placeholders showing alt text
+        node.querySelectorAll('img').forEach(img => {
+            const alt = img.getAttribute('alt') || 'Image'
+            const src = img.getAttribute('src') || ''
+            const placeholder = document.createElement('div')
+            placeholder.className = 'my-3 p-4 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center min-h-[100px]'
+            placeholder.innerHTML = `
+                <div class="text-slate-400 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                </div>
+                <div class="text-xs font-medium text-slate-600 text-center px-2">${alt}</div>
+                ${src ? `<div class="text-xs text-slate-400 truncate max-w-[200px] mt-1">${src.split('/').pop()}</div>` : ''}
+            `
+            img.replaceWith(placeholder)
+        })
+
+        // Detect and style FAQ sections
+        node.querySelectorAll('[itemtype*="FAQPage"], .faq, [class*="faq"], [id*="faq"]').forEach(faq => {
+            if (faq.querySelector('.faq-badge')) return
+            const faqBadge = document.createElement('div')
+            faqBadge.className = 'faq-badge inline-flex items-center px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-bold mb-2'
+            faqBadge.textContent = '📋 FAQ SECTION'
+            faq.insertBefore(faqBadge, faq.firstChild)
+        })
+
+        // Also detect FAQ by looking for question patterns
+        node.querySelectorAll('details, [class*="accordion"]').forEach(accordion => {
+            accordion.classList.add('my-2', 'p-2', 'bg-slate-50', 'rounded', 'border')
+        })
+    }, [sanitizedHtml])
 
     return (
         <div className="space-y-2">
