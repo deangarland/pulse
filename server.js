@@ -2080,10 +2080,10 @@ app.post('/api/enhance-section', async (req, res) => {
             return res.status(400).json({ error: 'pageId and sectionId are required' })
         }
 
-        // Get page info
+        // Get page info including enhanced_content which has the section analysis
         const { data: page, error: pageError } = await getSupabase()
             .from('page_index')
-            .select('id, url, title, page_type, cleaned_html, main_content')
+            .select('id, url, title, page_type, cleaned_html, main_content, enhanced_content')
             .eq('id', pageId)
             .single()
 
@@ -2112,7 +2112,45 @@ app.post('/api/enhance-section', async (req, res) => {
             return res.status(404).json({ error: `Section '${sectionId}' not found in template` })
         }
 
-        // Build enhancement prompt
+        // Get the section analysis to find where the section is located
+        const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
+
+        // Try to extract the actual section content from the page HTML
+        let actualSectionContent = sectionContent || ''
+        const cleanedHtml = page.cleaned_html || page.main_content || ''
+
+        if (sectionAnalysis?.found && sectionAnalysis?.location && cleanedHtml) {
+            // Extract location hint (e.g., "H2: 'Frequently Asked Questions'" or "H2: 'FAQ'")
+            const locationHint = sectionAnalysis.location
+
+            // Try to find the section content in the HTML
+            // Look for heading that matches the location and extract content after it
+            const headingMatch = locationHint.match(/H[1-6]:\s*['"]?([^'"]+)['"]?/i)
+            if (headingMatch) {
+                const headingText = headingMatch[1].toLowerCase().trim()
+
+                // Find the heading in the HTML and extract content until the next major heading
+                const htmlLower = cleanedHtml.toLowerCase()
+                const headingIndex = htmlLower.indexOf(headingText)
+
+                if (headingIndex !== -1) {
+                    // Extract up to 5000 characters from this section
+                    const sectionStart = Math.max(0, headingIndex - 50) // Include some context before heading
+
+                    // Find the next H1 or H2 after this section (end of section)
+                    const remainingHtml = cleanedHtml.substring(headingIndex + headingText.length)
+                    const nextHeadingMatch = remainingHtml.match(/<h[12][^>]*>/i)
+                    const sectionEnd = nextHeadingMatch
+                        ? headingIndex + headingText.length + nextHeadingMatch.index
+                        : Math.min(headingIndex + 5000, cleanedHtml.length)
+
+                    actualSectionContent = cleanedHtml.substring(sectionStart, sectionEnd).trim()
+                    console.log(`📋 Extracted ${actualSectionContent.length} chars for section ${sectionId}`)
+                }
+            }
+        }
+
+        // Build enhancement prompt with the ACTUAL section content
         const enhancePrompt = `You are an expert content writer for ${page.page_type.toLowerCase()} pages.
 
 SECTION TO ENHANCE: ${sectionDef.name}
@@ -2122,28 +2160,31 @@ PAGE CONTEXT:
 Title: ${page.title || 'Untitled'}
 URL: ${page.url}
 
-${sectionContent ? `CURRENT SECTION CONTENT:
-${sectionContent}` : `The section is MISSING. Generate new content for it based on the page context.`}
+${actualSectionContent ? `ORIGINAL SECTION CONTENT (from the actual page):
+${actualSectionContent}` : `The section is MISSING. Generate new content for it based on the page context.`}
 
 ${template.rewrite_prompt || 'Rewrite this section to be more engaging, SEO-friendly, and persuasive while maintaining the same factual information.'}
 
-CRITICAL REQUIREMENTS:
-1. Your enhanced content MUST be AT LEAST as thorough and comprehensive as the original
-2. If the original includes FAQs, you MUST include FAQs in your enhanced version
-3. If the original includes testimonials, statistics, pricing, or any other specific content elements, you MUST preserve and enhance them
-4. Do NOT remove or simplify content - ENHANCE and IMPROVE it while keeping all the valuable elements
-5. If the original has 5 FAQ items, your enhanced version should have at least 5 (ideally more/better)
+CRITICAL REQUIREMENTS (MUST FOLLOW):
+1. PRESERVE EXACT ORIGINAL QUESTIONS - If enhancing FAQs, keep the EXACT same questions from the original. Do NOT replace them with generic questions.
+2. Your enhanced content MUST be AT LEAST as thorough and comprehensive as the original
+3. If the original includes FAQs, you MUST include the same number of FAQ items with the SAME questions (enhanced answers are OK)
+4. If the original includes testimonials, statistics, pricing, or any other specific content elements, you MUST preserve and enhance them
+5. Do NOT remove, simplify, or replace content - ENHANCE and IMPROVE it while keeping all the original elements
+6. If original has 6 questions about "needle size", "cost", "pain level" - your version must have those SAME 6 questions
 
 IMPORTANT: Your enhanced_content MUST be properly formatted HTML, not plain text. Use these HTML tags:
 - <h1> for main titles
 - <h2> for section headings  
-- <h3> for sub-headings
-- <p> for paragraphs
+- <h3> for sub-headings or individual FAQ questions
+- <p> for paragraphs and FAQ answers
 - <strong> for emphasis
 - <ul>/<li> for lists
+- For FAQs specifically, use <h3> for questions and <p> for answers, OR preserve the original <details>/<summary> structure if present
 
-Example enhanced_content format:
-"<h2>Transform Your Skin with AQUAGOLD</h2><p>Experience the revolutionary <strong>micro-channeling treatment</strong> that delivers customized serums directly into your skin for radiant, youthful results.</p><h3>Why Choose AQUAGOLD?</h3><ul><li>Painless application</li><li>Custom cocktail of ingredients</li><li>Immediate visible results</li></ul>"
+Example enhanced FAQ format:
+"<h2>Frequently Asked Questions</h2><h3>What is the Cost of Aquagold Treatment?</h3><p>The Aquagold treatment typically costs $XXX per session...</p><h3>Is Aquagold Facial Painful?</h3><p>Most patients experience minimal discomfort...</p>"
+
 
 Respond in this JSON format:
 {
@@ -2151,7 +2192,7 @@ Respond in this JSON format:
     "section_name": "${sectionDef.name}",
     "original_content": "The original content if provided",
     "enhanced_content": "Your improved HTML content with proper tags like <h2>, <p>, <ul>, etc.",
-    "is_new_section": ${!sectionContent},
+    "is_new_section": ${!actualSectionContent},
     "implementation_notes": "Clear instructions on where and how to implement this content",
     "changes_made": ["List of specific improvements made"],
     "reasoning": "Explanation of why these changes improve the content"
