@@ -1281,9 +1281,10 @@ ${schema?.overall_reasoning || 'N/A'}
                             </CardHeader>
                             <CardContent>
                                 <Tabs defaultValue="original" className="w-full">
-                                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                                    <TabsList className="grid w-full grid-cols-3 mb-4">
                                         <TabsTrigger value="original">Original</TabsTrigger>
                                         <TabsTrigger value="enhanced">Enhanced</TabsTrigger>
+                                        <TabsTrigger value="compare">Compare</TabsTrigger>
                                     </TabsList>
 
                                     {/* Original Content - prioritize cleaned_html */}
@@ -1391,6 +1392,95 @@ ${schema?.overall_reasoning || 'N/A'}
                                                         <p className="text-sm font-medium text-amber-800">
                                                             Missing Sections: {contentAnalysis.missing_sections.join(', ')}
                                                         </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </TabsContent>
+
+                                    {/* Compare Tab - Side-by-side comparison */}
+                                    <TabsContent value="compare" className="space-y-4">
+                                        {!contentAnalysis ? (
+                                            <div className="text-sm text-muted-foreground mb-3 p-4 bg-amber-50 border border-amber-200 rounded-md">
+                                                <p className="font-medium text-amber-800">No analysis yet</p>
+                                                <p className="text-amber-700 mt-1">Click "Analyze Content" to generate enhanced content for comparison.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {/* Section-by-section comparison */}
+                                                {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).map((section) => {
+                                                    const enhanced = page.enhanced_content?.sections?.[section.section_id]
+                                                    return (
+                                                        <div key={section.section_id} className="rounded-lg border overflow-hidden">
+                                                            {/* Section Header */}
+                                                            <div className="flex items-center gap-2 p-3 bg-muted/50 border-b">
+                                                                {section.location && extractHeadingLevel(section.location) && (
+                                                                    <HeadingBadge level={extractHeadingLevel(section.location)!} />
+                                                                )}
+                                                                <span className="font-medium">{section.section_name}</span>
+                                                                <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
+                                                                    {section.required ? 'Required' : 'Optional'}
+                                                                </Badge>
+                                                            </div>
+
+                                                            {/* Side-by-side content */}
+                                                            <div className="grid grid-cols-2 divide-x">
+                                                                {/* Original */}
+                                                                <div className="p-4 bg-gray-50">
+                                                                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                                        <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                                                        ORIGINAL
+                                                                    </div>
+                                                                    <div className="text-sm text-muted-foreground">
+                                                                        {enhanced?.original || section.content_summary || (
+                                                                            <span className="italic">No original content found</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Enhanced */}
+                                                                <div className="p-4 bg-blue-50/50">
+                                                                    <div className="text-xs font-medium text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                                                        ENHANCED
+                                                                    </div>
+                                                                    <div
+                                                                        className="text-sm prose prose-sm max-w-none"
+                                                                        dangerouslySetInnerHTML={{ __html: enhanced?.enhanced || '' }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Changes summary */}
+                                                            {enhanced?.changes && enhanced.changes.length > 0 && (
+                                                                <div className="p-3 bg-green-50 border-t border-green-100">
+                                                                    <div className="text-xs font-medium text-green-700 uppercase tracking-wider mb-1">
+                                                                        Changes Made
+                                                                    </div>
+                                                                    <ul className="text-xs text-green-600 space-y-0.5">
+                                                                        {enhanced.changes.slice(0, 3).map((change, i) => (
+                                                                            <li key={i} className="flex items-start gap-1">
+                                                                                <Check className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                                                                                {change}
+                                                                            </li>
+                                                                        ))}
+                                                                        {enhanced.changes.length > 3 && (
+                                                                            <li className="text-green-500 italic">
+                                                                                +{enhanced.changes.length - 3} more changes
+                                                                            </li>
+                                                                        )}
+                                                                    </ul>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })}
+
+                                                {/* No enhanced sections message */}
+                                                {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).length === 0 && (
+                                                    <div className="text-sm text-muted-foreground p-4 bg-amber-50 border border-amber-200 rounded-md">
+                                                        <p className="font-medium text-amber-800">No sections enhanced yet</p>
+                                                        <p className="text-amber-700 mt-1">Go to the "Enhanced" tab and click "Enhance Content" on individual sections to generate improved content.</p>
                                                     </div>
                                                 )}
                                             </div>

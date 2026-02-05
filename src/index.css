@@ -128,6 +128,48 @@
   line-height: 1.7;
 }
 
+/* Tag indicator styles */
+.tiptap h1::before,
+.tiptap h2::before,
+.tiptap h3::before,
+.tiptap h4::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.5px;
+}
+
+.tiptap h1::before {
+  content: 'H1';
+  background-color: #3b82f6;
+  color: white;
+}
+
+.tiptap h2::before {
+  content: 'H2';
+  background-color: #10b981;
+  color: white;
+}
+
+.tiptap h3::before {
+  content: 'H3';
+  background-color: #8b5cf6;
+  color: white;
+}
+
+.tiptap h4::before {
+  content: 'H4';
+  background-color: #f59e0b;
+  color: white;
+}
+
 .prose h1,
 .tiptap h1 {
   font-size: 2rem;
