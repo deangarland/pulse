@@ -168,25 +168,25 @@ Respond with this exact JSON format:
 // Prompt cache to avoid repeated DB fetches
 const promptCache = {}
 
-// Fetch prompt from database (with caching)
-async function getPrompt(promptName) {
-    if (promptCache[promptName]) {
-        return promptCache[promptName]
+// Fetch prompt from database by type (with caching)
+async function getPrompt(promptType) {
+    if (promptCache[promptType]) {
+        return promptCache[promptType]
     }
 
     try {
         const { data, error } = await getSupabase()
             .from('prompts')
-            .select('system_prompt, default_model')
-            .eq('name', promptName)
+            .select('system_prompt, default_model, user_prompt_template')
+            .eq('prompt_type', promptType)
             .single()
 
         if (error || !data) {
-            console.log(`Prompt "${promptName}" not found in DB, using fallback`)
+            console.log(`Prompt type "${promptType}" not found in DB`)
             return null
         }
 
-        promptCache[promptName] = data
+        promptCache[promptType] = data
         return data
     } catch (err) {
         console.log(`Error fetching prompt: ${err.message}`)
@@ -291,7 +291,7 @@ app.post('/api/generate-recommendations', async (req, res) => {
         }
 
         // Fetch prompt from database (includes template with placeholders)
-        const promptData = await getPrompt('Meta Recommendations')
+        const promptData = await getPrompt('meta_recommendations')
         const promptTemplate = promptData?.system_prompt || FALLBACK_META_PROMPT
 
         // Build the prompt with page data
@@ -1903,7 +1903,7 @@ Respond in this exact JSON format:
         }
 
         // Fetch prompt from database
-        const promptData = await getPrompt('Content Analysis')
+        const promptData = await getPrompt('content_analysis')
         const systemPrompt = promptData?.system_prompt || template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.'
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
 
@@ -2233,7 +2233,7 @@ Respond in this JSON format:
 }`
 
         // Fetch prompt from database
-        const promptData = await getPrompt('Section Enhancement')
+        const promptData = await getPrompt('section_enhancement')
         const systemPrompt = promptData?.system_prompt || 'You are an expert content writer who creates engaging, SEO-optimized content for websites.'
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
 

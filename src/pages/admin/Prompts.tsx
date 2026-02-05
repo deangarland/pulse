@@ -20,8 +20,10 @@ import { ModelSelector } from "@/components/ModelSelector"
 interface Prompt {
     id: string
     name: string
+    prompt_type: string | null
     description: string | null
     system_prompt: string
+    user_prompt_template: string | null
     default_model: string | null
     updated_at: string
 }
@@ -31,6 +33,7 @@ export default function Prompts() {
     const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null)
     const [editForm, setEditForm] = useState({
         system_prompt: "",
+        user_prompt_template: "",
         default_model: "gpt-4o-mini"
     })
 
@@ -50,15 +53,17 @@ export default function Prompts() {
 
     // Update prompt mutation
     const updateMutation = useMutation({
-        mutationFn: async ({ id, system_prompt, default_model }: {
+        mutationFn: async ({ id, system_prompt, user_prompt_template, default_model }: {
             id: string,
             system_prompt: string,
+            user_prompt_template: string,
             default_model: string
         }) => {
             const { error } = await supabase
                 .from('prompts')
                 .update({
                     system_prompt,
+                    user_prompt_template: user_prompt_template || null,
                     default_model,
                     updated_at: new Date().toISOString()
                 })
@@ -80,6 +85,7 @@ export default function Prompts() {
         setEditingPrompt(prompt)
         setEditForm({
             system_prompt: prompt.system_prompt,
+            user_prompt_template: prompt.user_prompt_template || "",
             default_model: prompt.default_model || "gpt-4o-mini"
         })
     }
@@ -93,6 +99,7 @@ export default function Prompts() {
         updateMutation.mutate({
             id: editingPrompt.id,
             system_prompt: editForm.system_prompt,
+            user_prompt_template: editForm.user_prompt_template,
             default_model: editForm.default_model
         })
     }
@@ -134,6 +141,16 @@ export default function Prompts() {
                         )}
                     </div>
                 </div>
+            )
+        },
+        {
+            key: 'prompt_type',
+            label: 'Type ID',
+            defaultWidth: 160,
+            render: (value: string | null) => (
+                <span className="text-xs font-mono bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                    {value || 'unset'}
+                </span>
             )
         },
         {
@@ -253,7 +270,22 @@ export default function Prompts() {
                                 placeholder="Enter the system prompt..."
                             />
                             <p className="text-xs text-muted-foreground">
-                                Use {`{{variable}}`} placeholders for dynamic content (e.g., {`{{title}}`}, {`{{content}}`}, {`{{pageUrl}}`})
+                                The system prompt sets the AI's role and behavior rules.
+                            </p>
+                        </div>
+
+                        {/* User Prompt Template */}
+                        <div className="space-y-2">
+                            <Label>User Prompt Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                            <Textarea
+                                value={editForm.user_prompt_template}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, user_prompt_template: e.target.value }))}
+                                className="min-h-[150px] font-mono text-sm"
+                                placeholder="Enter the user prompt template with {{placeholders}}..."
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Use {`{{variable}}`} placeholders for dynamic content (e.g., {`{{page_title}}`}, {`{{section_name}}`}, {`{{original_content}}`}).
+                                This template is filled in with actual data at runtime.
                             </p>
                         </div>
                     </div>
