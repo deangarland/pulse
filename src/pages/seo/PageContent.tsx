@@ -307,7 +307,7 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
             </div>
             <div
                 ref={containerRef}
-                className="bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto"
+                className="prose prose-sm max-w-none bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto"
                 dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
             />
         </div>
