@@ -1795,7 +1795,7 @@ app.post('/api/pages/:id/classify', async (req, res) => {
 // POST /api/analyze-content - Analyze page content against template
 app.post('/api/analyze-content', async (req, res) => {
     try {
-        const { pageId, pageType } = req.body
+        const { pageId, pageType, model } = req.body
 
         if (!pageId) {
             return res.status(400).json({ error: 'pageId is required' })
@@ -1892,16 +1892,21 @@ Respond in this exact JSON format:
 }`
 
 
-        // Use OpenAI for analysis (can extend to other providers)
+        // Use OpenAI for analysis
         if (!openai) {
             return res.status(400).json({ error: 'OpenAI API key not configured' })
         }
 
+        // Fetch prompt from database
+        const promptData = await getPrompt('Content Analysis')
+        const systemPrompt = promptData?.system_prompt || template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.'
+        const selectedModel = model || promptData?.default_model || 'gpt-4o'
+
         const startTime = Date.now()
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: selectedModel,
             messages: [
-                { role: 'system', content: template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.' },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: analysisPrompt }
             ],
             temperature: 0.3,
@@ -1923,7 +1928,7 @@ Respond in this exact JSON format:
             pageId,
             pageUrl: page.url,
             provider: 'openai',
-            model: 'gpt-4o',
+            model: selectedModel,
             inputTokens,
             outputTokens,
             requestDurationMs,
@@ -2153,8 +2158,10 @@ Respond in this JSON format:
 
 }`
 
-        // Use specified model or default
-        const selectedModel = model || 'gpt-4o'
+        // Fetch prompt from database
+        const promptData = await getPrompt('Section Enhancement')
+        const systemPrompt = promptData?.system_prompt || 'You are an expert content writer who creates engaging, SEO-optimized content for websites.'
+        const selectedModel = model || promptData?.default_model || 'gpt-4o'
 
         if (!openai) {
             return res.status(400).json({ error: 'OpenAI API key not configured' })
@@ -2164,7 +2171,7 @@ Respond in this JSON format:
         const response = await openai.chat.completions.create({
             model: selectedModel,
             messages: [
-                { role: 'system', content: 'You are an expert content writer who creates engaging, SEO-optimized content for websites.' },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: enhancePrompt }
             ],
             temperature: 0.7,

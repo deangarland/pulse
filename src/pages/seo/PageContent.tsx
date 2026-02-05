@@ -1001,12 +1001,12 @@ export default function PageContent() {
 
     // Content analysis mutation
     const analyzeContentMutation = useMutation({
-        mutationFn: async ({ pageId, pageType }: { pageId: string; pageType?: string }) => {
+        mutationFn: async ({ pageId, pageType, model }: { pageId: string; pageType?: string; model?: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${apiUrl}/api/analyze-content`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId, pageType })
+                body: JSON.stringify({ pageId, pageType, model })
             })
             if (!response.ok) {
                 const error = await response.json()
@@ -1291,18 +1291,24 @@ ${schema?.overall_reasoning || 'N/A'}
                                             Compare original and AI-enhanced content
                                         </CardDescription>
                                     </div>
-                                    <Button
-                                        variant="default"
-                                        disabled={analyzeContentMutation.isPending || !page.page_type}
-                                        onClick={() => analyzeContentMutation.mutate({ pageId: page.id, pageType: page.page_type || undefined })}
-                                        className="gap-2"
-                                    >
-                                        {analyzeContentMutation.isPending ? (
-                                            <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</>
-                                        ) : (
-                                            <><Wand2 className="h-4 w-4" /> Analyze Content</>
-                                        )}
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <ModelSelector
+                                            value={selectedModel}
+                                            onChange={setSelectedModel}
+                                        />
+                                        <Button
+                                            variant="default"
+                                            disabled={analyzeContentMutation.isPending || !page.page_type}
+                                            onClick={() => analyzeContentMutation.mutate({ pageId: page.id, pageType: page.page_type || undefined, model: selectedModel })}
+                                            className="gap-2"
+                                        >
+                                            {analyzeContentMutation.isPending ? (
+                                                <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</>
+                                            ) : (
+                                                <><Wand2 className="h-4 w-4" /> Analyze Content</>
+                                            )}
+                                        </Button>
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -1375,18 +1381,39 @@ ${schema?.overall_reasoning || 'N/A'}
                                             </div>
                                         ) : (
                                             <div className="space-y-4">
-                                                {/* Overall Score */}
+                                                {/* Overall Score and Word Count */}
                                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                                                     <div>
                                                         <h4 className="font-semibold">Content Completeness Score</h4>
                                                         <p className="text-sm text-muted-foreground">{contentAnalysis.summary}</p>
                                                     </div>
-                                                    <div className={`text-3xl font-bold ${contentAnalysis.overall_score >= 80 ? 'text-green-600' :
-                                                        contentAnalysis.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
-                                                        }`}>
-                                                        {contentAnalysis.overall_score}%
+                                                    <div className="flex items-center gap-6">
+                                                        {/* Word Count */}
+                                                        {(() => {
+                                                            const sections = page.enhanced_content?.sections || {}
+                                                            const totalWords = Object.values(sections).reduce((sum, section: { enhanced?: string }) => {
+                                                                if (section?.enhanced) {
+                                                                    // Strip HTML tags and count words
+                                                                    const text = section.enhanced.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+                                                                    return sum + (text ? text.split(' ').length : 0)
+                                                                }
+                                                                return sum
+                                                            }, 0)
+                                                            return totalWords > 0 && (
+                                                                <div className="text-right">
+                                                                    <div className="text-2xl font-bold text-blue-600">{totalWords.toLocaleString()}</div>
+                                                                    <div className="text-xs text-muted-foreground">words</div>
+                                                                </div>
+                                                            )
+                                                        })()}
+                                                        <div className={`text-3xl font-bold ${contentAnalysis.overall_score >= 80 ? 'text-green-600' :
+                                                            contentAnalysis.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
+                                                            }`}>
+                                                            {contentAnalysis.overall_score}%
+                                                        </div>
                                                     </div>
                                                 </div>
+
 
                                                 {/* Enhance All Found Sections Button */}
                                                 {(() => {
