@@ -2203,8 +2203,15 @@ app.post('/api/enhance-section', async (req, res) => {
         const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
 
         // Try to extract the actual section content from the page HTML
-        let actualSectionContent = sectionContent || ''
+        let actualSectionContent = ''
         const cleanedHtml = page.cleaned_html || page.main_content || ''
+
+        console.log(`📋 Section Enhancement: ${sectionId}`)
+        console.log(`   - sectionAnalysis found: ${!!sectionAnalysis}`)
+        console.log(`   - sectionAnalysis.found: ${sectionAnalysis?.found}`)
+        console.log(`   - sectionAnalysis.location: ${sectionAnalysis?.location}`)
+        console.log(`   - cleanedHtml length: ${cleanedHtml.length}`)
+        console.log(`   - sectionContent param length: ${(sectionContent || '').length}`)
 
         if (sectionAnalysis?.found && sectionAnalysis?.location && cleanedHtml) {
             // Extract location hint (e.g., "H2: 'Frequently Asked Questions'" or "H2: 'FAQ'")
@@ -2215,27 +2222,78 @@ app.post('/api/enhance-section', async (req, res) => {
             const headingMatch = locationHint.match(/H[1-6]:\s*['"]?([^'"]+)['"]?/i)
             if (headingMatch) {
                 const headingText = headingMatch[1].toLowerCase().trim()
+                console.log(`   - Looking for heading text: "${headingText}"`)
 
                 // Find the heading in the HTML and extract content until the next major heading
                 const htmlLower = cleanedHtml.toLowerCase()
                 const headingIndex = htmlLower.indexOf(headingText)
+                console.log(`   - headingIndex: ${headingIndex}`)
 
                 if (headingIndex !== -1) {
-                    // Extract up to 5000 characters from this section
-                    const sectionStart = Math.max(0, headingIndex - 50) // Include some context before heading
+                    // Find the actual heading tag before this text
+                    const beforeHeading = cleanedHtml.substring(Math.max(0, headingIndex - 100), headingIndex)
+                    const tagMatch = beforeHeading.match(/<h[1-6][^>]*>\s*$/i)
+                    const sectionStart = tagMatch
+                        ? headingIndex - tagMatch[0].length
+                        : Math.max(0, headingIndex - 20)
 
                     // Find the next H1 or H2 after this section (end of section)
                     const remainingHtml = cleanedHtml.substring(headingIndex + headingText.length)
                     const nextHeadingMatch = remainingHtml.match(/<h[12][^>]*>/i)
                     const sectionEnd = nextHeadingMatch
                         ? headingIndex + headingText.length + nextHeadingMatch.index
-                        : Math.min(headingIndex + 5000, cleanedHtml.length)
+                        : cleanedHtml.length // Take to end of page if no next heading
 
                     actualSectionContent = cleanedHtml.substring(sectionStart, sectionEnd).trim()
-                    console.log(`📋 Extracted ${actualSectionContent.length} chars for section ${sectionId}`)
+                    console.log(`   ✅ Extracted ${actualSectionContent.length} chars for section ${sectionId}`)
+
+                    // Calculate word count
+                    const wordCount = actualSectionContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length
+                    console.log(`   - Extracted word count: ${wordCount}`)
+                } else {
+                    console.log(`   ⚠️ Could not find heading "${headingText}" in HTML`)
+                }
+            } else {
+                console.log(`   ⚠️ Could not extract heading from location: ${locationHint}`)
+            }
+        }
+
+        // Fallback: if extraction failed and we have sectionContent summary, try to find it differently
+        if (!actualSectionContent && cleanedHtml && sectionId) {
+            console.log(`   🔄 Using fallback extraction for ${sectionId}`)
+
+            // For FAQ section, look for "FAQ" or "Frequently Asked" in headings
+            if (sectionId === 'faq' || sectionId.includes('faq')) {
+                const faqMatch = cleanedHtml.match(/<h[2-4][^>]*>[^<]*(?:FAQ|Frequently Asked)[^<]*<\/h[2-4]>/i)
+                if (faqMatch) {
+                    const faqStart = faqMatch.index
+                    const afterFaq = cleanedHtml.substring(faqStart + faqMatch[0].length)
+                    const nextH2 = afterFaq.match(/<h[12][^>]*>/i)
+                    const faqEnd = nextH2 ? faqStart + faqMatch[0].length + nextH2.index : cleanedHtml.length
+                    actualSectionContent = cleanedHtml.substring(faqStart, faqEnd).trim()
+                    console.log(`   ✅ Fallback extracted ${actualSectionContent.length} chars for FAQ section`)
+                }
+            }
+
+            // For hero section, take the first portion of content before first H2
+            if (sectionId === 'hero' && !actualSectionContent) {
+                const firstH2 = cleanedHtml.match(/<h2[^>]*>/i)
+                if (firstH2) {
+                    actualSectionContent = cleanedHtml.substring(0, firstH2.index).trim()
+                    console.log(`   ✅ Fallback extracted ${actualSectionContent.length} chars for Hero section`)
                 }
             }
         }
+
+        // Last resort: use the passed sectionContent if we still have nothing
+        if (!actualSectionContent && sectionContent) {
+            console.log(`   ⚠️ Using passed sectionContent as last resort (likely just a summary)`)
+            actualSectionContent = sectionContent
+        }
+
+        // Final logging
+        const finalWordCount = actualSectionContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length
+        console.log(`   📊 Final content for AI: ${actualSectionContent.length} chars, ~${finalWordCount} words`)
 
 
         // Build context about already-enhanced sections for anti-redundancy
