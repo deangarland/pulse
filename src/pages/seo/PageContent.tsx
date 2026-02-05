@@ -158,60 +158,6 @@ function extractHeadingText(location: string): string | null {
     return match ? match[1] : null
 }
 
-// Extract section content from cleaned_html based on heading
-function extractSectionFromHtml(cleanedHtml: string | null, sectionLocation: string | undefined): string | null {
-    if (!cleanedHtml || !sectionLocation) return null
-
-    const headingText = extractHeadingText(sectionLocation)
-    if (!headingText) return null
-
-    // Create a DOM parser
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(cleanedHtml, 'text/html')
-
-    // Find all headings
-    const allHeadings = doc.querySelectorAll('h1, h2, h3, h4')
-
-    // Find the heading that matches our section
-    let startHeading: Element | null = null
-    for (const heading of allHeadings) {
-        // Normalize both strings for comparison
-        const headingContent = heading.textContent?.trim().toLowerCase() || ''
-        const searchText = headingText.trim().toLowerCase()
-
-        if (headingContent.includes(searchText) || searchText.includes(headingContent)) {
-            startHeading = heading
-            break
-        }
-    }
-
-    if (!startHeading) return null
-
-    // Get the heading level number (1-4)
-    const headingLevel = parseInt(startHeading.tagName[1])
-
-    // Collect content until next heading of same or higher level
-    const contentParts: string[] = []
-    let currentElement = startHeading.nextElementSibling
-
-    while (currentElement) {
-        const tagName = currentElement.tagName.toUpperCase()
-
-        // Stop if we hit another heading of same or higher level
-        if (tagName.match(/^H[1-4]$/)) {
-            const nextLevel = parseInt(tagName[1])
-            if (nextLevel <= headingLevel) break
-        }
-
-        // Add the element's outer HTML
-        contentParts.push(currentElement.outerHTML)
-        currentElement = currentElement.nextElementSibling
-    }
-
-    // Return the heading + content as HTML
-    return `${startHeading.outerHTML}${contentParts.join('')}`
-}
-
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
 function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = false }: { html: string; wordCount?: number; showHeader?: boolean; hideImages?: boolean }) {
     const containerRef = useRef<HTMLDivElement>(null)
