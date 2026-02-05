@@ -213,7 +213,7 @@ function extractSectionFromHtml(cleanedHtml: string | null, sectionLocation: str
 }
 
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
-function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: number }) {
+function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = false }: { html: string; wordCount?: number; showHeader?: boolean; hideImages?: boolean }) {
     const containerRef = useRef<HTMLDivElement>(null)
 
     // Sanitize and prepare HTML
@@ -271,20 +271,26 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
             li.classList.add('text-sm', 'leading-relaxed', 'my-1', 'ml-4')
         })
 
-        // Replace images with placeholders showing alt text
+        // Handle images based on hideImages prop
         node.querySelectorAll('img').forEach(img => {
-            const alt = img.getAttribute('alt') || 'Image'
-            const src = img.getAttribute('src') || ''
-            const placeholder = document.createElement('div')
-            placeholder.className = 'my-3 p-4 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center min-h-[100px]'
-            placeholder.innerHTML = `
-                <div class="text-slate-400 mb-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                </div>
-                <div class="text-xs font-medium text-slate-600 text-center px-2">${alt}</div>
-                ${src ? `<div class="text-xs text-slate-400 truncate max-w-[200px] mt-1">${src.split('/').pop()}</div>` : ''}
-            `
-            img.replaceWith(placeholder)
+            if (hideImages) {
+                // Just remove images entirely
+                img.remove()
+            } else {
+                // Replace with placeholders
+                const alt = img.getAttribute('alt') || 'Image'
+                const src = img.getAttribute('src') || ''
+                const placeholder = document.createElement('div')
+                placeholder.className = 'my-3 p-4 bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center min-h-[100px]'
+                placeholder.innerHTML = `
+                    <div class="text-slate-400 mb-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    </div>
+                    <div class="text-xs font-medium text-slate-600 text-center px-2">${alt}</div>
+                    ${src ? `<div class="text-xs text-slate-400 truncate max-w-[200px] mt-1">${src.split('/').pop()}</div>` : ''}
+                `
+                img.replaceWith(placeholder)
+            }
         })
 
         // Detect and style FAQ sections
@@ -299,17 +305,19 @@ function CleanHtmlContent({ html, wordCount }: { html: string; wordCount?: numbe
         node.querySelectorAll('details, [class*="accordion"]').forEach(accordion => {
             accordion.classList.add('my-2', 'p-2', 'bg-slate-50', 'rounded', 'border')
         })
-    }, [sanitizedHtml])
+    }, [sanitizedHtml, hideImages])
 
     return (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
-                <span>Page content (from cleaned HTML)</span>
-                {wordCount && <span>{wordCount} words</span>}
-            </div>
+        <div className={showHeader ? "space-y-2" : ""}>
+            {showHeader && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
+                    <span>Page content (from cleaned HTML)</span>
+                    {wordCount && <span>{wordCount} words</span>}
+                </div>
+            )}
             <div
                 ref={containerRef}
-                className="bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto"
+                className={showHeader ? "bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto" : ""}
             />
         </div>
     )
@@ -1492,7 +1500,7 @@ ${schema?.overall_reasoning || 'N/A'}
                                                         ORIGINAL
                                                     </div>
                                                     <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto">
-                                                        <CleanHtmlContent html={page.cleaned_html || ''} />
+                                                        <CleanHtmlContent html={page.cleaned_html || ''} showHeader={false} hideImages={true} />
                                                     </div>
                                                 </div>
 
