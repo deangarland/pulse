@@ -877,12 +877,12 @@ export default function PageContent() {
 
     // Generate schema mutation (uses v2 template-based endpoint)
     const generateSchemaMutation = useMutation({
-        mutationFn: async ({ pageId }: { pageId: string }) => {
+        mutationFn: async ({ pageId, model }: { pageId: string; model?: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
             const response = await fetch(`${apiUrl}/api/generate-schema-v2`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId, includeMedium: true })
+                body: JSON.stringify({ pageId, includeMedium: true, model })
             })
 
             if (!response.ok) {
@@ -1636,23 +1636,30 @@ ${schema?.overall_reasoning || 'N/A'}
                                             </span>
                                         )}
                                     </div>
-                                    <Button
-                                        onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id })}
-                                        disabled={generateSchemaMutation.isPending}
-                                        className="gap-2"
-                                    >
-                                        {generateSchemaMutation.isPending ? (
-                                            <>
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                Generating...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Sparkles className="h-4 w-4" />
-                                                Generate Schema
-                                            </>
-                                        )}
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <ModelSelector
+                                            value={selectedModel}
+                                            onChange={setSelectedModel}
+                                            disabled={generateSchemaMutation.isPending}
+                                        />
+                                        <Button
+                                            onClick={() => page && generateSchemaMutation.mutate({ pageId: page.id, model: selectedModel })}
+                                            disabled={generateSchemaMutation.isPending}
+                                            className="gap-2"
+                                        >
+                                            {generateSchemaMutation.isPending ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Generating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Sparkles className="h-4 w-4" />
+                                                    Generate Schema
+                                                </>
+                                            )}
+                                        </Button>
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-6">
