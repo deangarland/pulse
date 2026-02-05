@@ -1478,104 +1478,52 @@ ${schema?.overall_reasoning || 'N/A'}
 
                                     {/* Compare Tab - Side-by-side comparison */}
                                     <TabsContent value="compare" className="space-y-4">
-                                        {!contentAnalysis ? (
+                                        {!contentAnalysis || !page.enhanced_content?.sections ? (
                                             <div className="text-sm text-muted-foreground mb-3 p-4 bg-amber-50 border border-amber-200 rounded-md">
-                                                <p className="font-medium text-amber-800">No analysis yet</p>
-                                                <p className="text-amber-700 mt-1">Click "Analyze Content" to generate enhanced content for comparison.</p>
+                                                <p className="font-medium text-amber-800">No enhanced content yet</p>
+                                                <p className="text-amber-700 mt-1">Click "Analyze Content" first, then go to the Enhanced tab and enhance sections to see the comparison.</p>
                                             </div>
                                         ) : (
-                                            <div className="space-y-4">
-                                                {/* Section-by-section comparison */}
-                                                {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).map((section) => {
-                                                    const enhanced = page.enhanced_content?.sections?.[section.section_id]
-                                                    return (
-                                                        <div key={section.section_id} className="rounded-lg border overflow-hidden">
-                                                            {/* Section Header */}
-                                                            <div className="flex items-center gap-2 p-3 bg-muted/50 border-b">
-                                                                {section.location && extractHeadingLevel(section.location) && (
-                                                                    <HeadingBadge level={extractHeadingLevel(section.location)!} />
-                                                                )}
-                                                                <span className="font-medium">{section.section_name}</span>
-                                                                <Badge variant={section.required ? 'default' : 'secondary'} className="text-xs">
-                                                                    {section.required ? 'Required' : 'Optional'}
-                                                                </Badge>
-                                                            </div>
-
-                                                            {/* Side-by-side content */}
-                                                            <div className="grid grid-cols-2 divide-x">
-                                                                {/* Original */}
-                                                                <div className="p-4 bg-gray-50">
-                                                                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-                                                                        <div className="w-2 h-2 rounded-full bg-gray-400" />
-                                                                        ORIGINAL
-                                                                    </div>
-                                                                    {(() => {
-                                                                        // Try to extract actual HTML content from cleaned_html
-                                                                        const extractedHtml = extractSectionFromHtml(page.cleaned_html, section.location)
-                                                                        if (extractedHtml) {
-                                                                            return (
-                                                                                <div
-                                                                                    className="text-sm prose prose-sm max-w-none text-muted-foreground"
-                                                                                    dangerouslySetInnerHTML={{ __html: extractedHtml }}
-                                                                                />
-                                                                            )
-                                                                        }
-                                                                        // Fallback to stored original or content_summary
-                                                                        return (
-                                                                            <div className="text-sm text-muted-foreground">
-                                                                                {enhanced?.original || section.content_summary || (
-                                                                                    <span className="italic">No original content found</span>
-                                                                                )}
-                                                                            </div>
-                                                                        )
-                                                                    })()}
-                                                                </div>
-
-                                                                {/* Enhanced */}
-                                                                <div className="p-4 bg-blue-50/50">
-                                                                    <div className="text-xs font-medium text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                                                        ENHANCED
-                                                                    </div>
-                                                                    <div
-                                                                        className="text-sm prose prose-sm max-w-none"
-                                                                        dangerouslySetInnerHTML={{ __html: enhanced?.enhanced || '' }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Changes summary */}
-                                                            {enhanced?.changes && enhanced.changes.length > 0 && (
-                                                                <div className="p-3 bg-green-50 border-t border-green-100">
-                                                                    <div className="text-xs font-medium text-green-700 uppercase tracking-wider mb-1">
-                                                                        Changes Made
-                                                                    </div>
-                                                                    <ul className="text-xs text-green-600 space-y-0.5">
-                                                                        {enhanced.changes.slice(0, 3).map((change, i) => (
-                                                                            <li key={i} className="flex items-start gap-1">
-                                                                                <Check className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                                                                                {change}
-                                                                            </li>
-                                                                        ))}
-                                                                        {enhanced.changes.length > 3 && (
-                                                                            <li className="text-green-500 italic">
-                                                                                +{enhanced.changes.length - 3} more changes
-                                                                            </li>
-                                                                        )}
-                                                                    </ul>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )
-                                                })}
-
-                                                {/* No enhanced sections message */}
-                                                {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).length === 0 && (
-                                                    <div className="text-sm text-muted-foreground p-4 bg-amber-50 border border-amber-200 rounded-md">
-                                                        <p className="font-medium text-amber-800">No sections enhanced yet</p>
-                                                        <p className="text-amber-700 mt-1">Go to the "Enhanced" tab and click "Enhance Content" on individual sections to generate improved content.</p>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Original Column */}
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b">
+                                                        <div className="w-2 h-2 rounded-full bg-gray-400" />
+                                                        ORIGINAL
                                                     </div>
-                                                )}
+                                                    <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto">
+                                                        <CleanHtmlContent html={page.cleaned_html || ''} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Enhanced Column */}
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2 text-sm font-medium text-blue-700 uppercase tracking-wider pb-2 border-b">
+                                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                                        ENHANCED
+                                                    </div>
+                                                    <div className="bg-blue-50/50 p-4 rounded-md max-h-[600px] overflow-y-auto space-y-4">
+                                                        {/* Render all enhanced sections in order */}
+                                                        {contentAnalysis.sections
+                                                            .filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced)
+                                                            .map((section) => {
+                                                                const enhanced = page.enhanced_content?.sections?.[section.section_id]
+                                                                return (
+                                                                    <div key={section.section_id}>
+                                                                        <div
+                                                                            className="prose prose-sm max-w-none"
+                                                                            dangerouslySetInnerHTML={{ __html: enhanced?.enhanced || '' }}
+                                                                        />
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).length === 0 && (
+                                                            <div className="text-sm text-muted-foreground italic">
+                                                                No sections enhanced yet. Go to the Enhanced tab to enhance sections.
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </TabsContent>
