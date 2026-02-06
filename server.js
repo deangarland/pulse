@@ -2275,6 +2275,9 @@ app.post('/api/enhance-section', async (req, res) => {
         // Get the section analysis to find where the section is located
         const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
 
+        // Check if this section should preserve original content (e.g., testimonials)
+        const shouldPreserveOriginal = sectionAnalysis?.preserve_original === true
+
         // For unmatched sections, we need the analysis data
         const isUnmatchedSection = sectionId.startsWith('unmatched_') || (sectionAnalysis && !sectionAnalysis.template_match)
         if (!sectionDef && !isUnmatchedSection) {
@@ -2292,6 +2295,7 @@ app.post('/api/enhance-section', async (req, res) => {
         console.log(`📋 Section Enhancement: ${sectionId}`)
         console.log(`   - sectionAnalysis found: ${!!sectionAnalysis}`)
         console.log(`   - template_match: ${sectionAnalysis?.template_match}`)
+        console.log(`   - preserve_original: ${shouldPreserveOriginal}`)
         console.log(`   - heading_text: ${sectionAnalysis?.heading_text}`)
         console.log(`   - cleanedHtml length: ${cleanedHtml.length}`)
         console.log(`   - sectionContent param length: ${(sectionContent || '').length}`)
@@ -2445,6 +2449,57 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
         const isHeroSection = sectionId === 'hero'
         const isCTASection = sectionId === 'cta' || sectionId.includes('cta')
         const isFAQSection = sectionId === 'faq' || sectionId.includes('faq')
+
+        // Check if we should preserve original content (testimonials, reviews)
+        if (shouldPreserveOriginal && actualSectionContent) {
+            console.log(`   🛡️ Preserving original content for ${sectionId} (testimonials/reviews)`)
+
+            // Save preserved content to database
+            try {
+                const { data: existingPage } = await getSupabase()
+                    .from('page_index')
+                    .select('enhanced_content')
+                    .eq('id', pageId)
+                    .single()
+
+                const existingContent = existingPage?.enhanced_content || { sections: {} }
+
+                // Format the original content slightly (clean HTML) but don't rewrite
+                existingContent.sections[sectionId] = {
+                    original: actualSectionContent,
+                    enhanced: actualSectionContent, // Use original as-is
+                    reasoning: 'Original content preserved - testimonials and reviews should not be rewritten to maintain authenticity.',
+                    changes: ['Preserved original testimonials'],
+                    heading_level: sectionDef?.heading_level || null,
+                    is_new_section: false,
+                    section_name: effectiveSectionName,
+                    preserved_original: true,
+                    enhanced_at: new Date().toISOString()
+                }
+
+                await getSupabase()
+                    .from('page_index')
+                    .update({
+                        enhanced_content: existingContent,
+                        content_analyzed_at: new Date().toISOString()
+                    })
+                    .eq('id', pageId)
+
+                console.log(`✅ Preserved original content for section ${sectionId}`)
+            } catch (saveError) {
+                console.error('Failed to save preserved content:', saveError)
+            }
+
+            return res.json({
+                success: true,
+                sectionId,
+                enhanced_content: actualSectionContent,
+                reasoning: 'Original content preserved for authenticity',
+                changes_made: ['Preserved original testimonials'],
+                is_new_section: false,
+                preserved_original: true
+            })
+        }
 
         // Extract business name and location from page data
         const businessName = page.title?.split(/[-|]/)[0]?.trim() || 'this business'
