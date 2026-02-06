@@ -241,9 +241,23 @@ function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = fal
             faq.insertBefore(faqBadge, faq.firstChild)
         })
 
-        // Also detect FAQ by looking for question patterns
-        node.querySelectorAll('details, [class*="accordion"]').forEach(accordion => {
-            accordion.classList.add('my-2', 'p-2', 'bg-slate-50', 'rounded', 'border')
+        // Also detect FAQ by looking for question patterns (details/summary)
+        // Force them open so content is visible
+        node.querySelectorAll('details').forEach(details => {
+            details.setAttribute('open', 'true')
+            details.classList.add('my-3', 'p-3', 'bg-amber-50', 'rounded-lg', 'border', 'border-amber-200')
+
+            // Style the summary (question)
+            const summary = details.querySelector('summary')
+            if (summary) {
+                summary.classList.add('font-semibold', 'text-sm', 'cursor-pointer', 'text-amber-900', 'mb-2')
+            }
+
+            // Style the answer content
+            const answerDiv = details.querySelector(':scope > div')
+            if (answerDiv) {
+                answerDiv.classList.add('text-sm', 'text-gray-700', 'mt-2', 'pl-4', 'border-l-2', 'border-amber-300')
+            }
         })
     }, [sanitizedHtml, hideImages])
 
