@@ -47,7 +47,7 @@ function getSupabase() {
 const DELAY_MS = 200   // Delay between requests (200ms = ~5 pages/sec max)
 const TIMEOUT_MS = 15000  // Per-page timeout (15 sec max)
 const MAX_RETRIES = 2  // Retry failed pages up to 2 times
-const MAX_CLEANED_HTML_LENGTH = 15000
+// No HTML length limit - capture full page content
 
 // ============================================================
 // HTML Cleaning (from clean-html.js)
@@ -136,14 +136,7 @@ function cleanHtml(rawHtml) {
         .replace(/^\s+|\s+$/gm, '')        // Trim each line
         .trim()
 
-    if (cleaned.length > MAX_CLEANED_HTML_LENGTH) {
-        const truncatePoint = cleaned.lastIndexOf('>', MAX_CLEANED_HTML_LENGTH)
-        if (truncatePoint > MAX_CLEANED_HTML_LENGTH * 0.8) {
-            cleaned = cleaned.substring(0, truncatePoint + 1) + '<!-- truncated -->'
-        } else {
-            cleaned = cleaned.substring(0, MAX_CLEANED_HTML_LENGTH) + '<!-- truncated -->'
-        }
-    }
+    // No truncation - capture full page content for accurate analysis
 
     return cleaned
 }
