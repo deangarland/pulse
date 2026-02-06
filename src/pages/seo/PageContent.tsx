@@ -1575,11 +1575,11 @@ ${schema?.overall_reasoning || 'N/A'}
 
                                                 {/* Enhanced Column */}
                                                 <div className="space-y-2">
-                                                    <div className="flex items-center gap-2 text-sm font-medium text-blue-700 uppercase tracking-wider pb-2 border-b">
-                                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                                    <div className="flex items-center gap-2 text-sm font-medium text-green-700 uppercase tracking-wider pb-2 border-b">
+                                                        <div className="w-2 h-2 rounded-full bg-green-500" />
                                                         ENHANCED
                                                     </div>
-                                                    <div className="bg-blue-50/50 p-4 rounded-md max-h-[600px] overflow-y-auto space-y-4">
+                                                    <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto space-y-4">
                                                         {/* Render all enhanced sections in order */}
                                                         {contentAnalysis.sections
                                                             .filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced)
