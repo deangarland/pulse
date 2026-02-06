@@ -2,13 +2,14 @@
 /**
  * Site Crawler
  * Background crawler script that crawls a site and triggers classification on completion.
+ * Uses Playwright for full JavaScript rendering to capture dynamic content.
  * 
  * Usage:
  *   node crawl-site.js --site-id=123 --limit=200 --exclude=/blog/page/*,/tag/*
  */
 import { createClient } from '@supabase/supabase-js'
 import { load } from 'cheerio'
-import axios from 'axios'
+import { chromium } from 'playwright'
 import { spawn } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -44,10 +45,42 @@ function getSupabase() {
     return _supabase
 }
 
-const DELAY_MS = 200   // Delay between requests (200ms = ~5 pages/sec max)
-const TIMEOUT_MS = 15000  // Per-page timeout (15 sec max)
+const DELAY_MS = 500   // Delay between requests (slower for Playwright)
+const TIMEOUT_MS = 30000  // Per-page timeout (30 sec for JS rendering)
 const MAX_RETRIES = 2  // Retry failed pages up to 2 times
 // No HTML length limit - capture full page content
+
+// ============================================================
+// Browser Lifecycle (Playwright)
+// ============================================================
+
+let _browser = null
+let _context = null
+
+async function getBrowser() {
+    if (!_browser) {
+        console.log('🌐 Launching headless browser...')
+        _browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        })
+        _context = await _browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 720 }
+        })
+        console.log('✓ Browser ready')
+    }
+    return { browser: _browser, context: _context }
+}
+
+async function closeBrowser() {
+    if (_browser) {
+        await _browser.close()
+        _browser = null
+        _context = null
+        console.log('🌐 Browser closed')
+    }
+}
 
 // ============================================================
 // HTML Cleaning (from clean-html.js)
@@ -320,7 +353,7 @@ class UrlQueue {
 }
 
 // ============================================================
-// Fetcher
+// Fetcher (Playwright)
 // ============================================================
 
 let lastFetchTime = 0
@@ -332,37 +365,46 @@ async function fetchPage(url, retryCount = 0) {
         await new Promise(resolve => setTimeout(resolve, DELAY_MS - elapsed))
     }
 
+    let page = null
     try {
-        const response = await axios.get(url, {
+        const { context } = await getBrowser()
+        page = await context.newPage()
+
+        // Navigate and wait for network to be idle (JS loaded)
+        const response = await page.goto(url, {
             timeout: TIMEOUT_MS,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5'
-            },
-            maxRedirects: 5,
-            validateStatus: () => true,
-            responseType: 'text',
+            waitUntil: 'networkidle'  // Wait for all JS to load
         })
 
         lastFetchTime = Date.now()
 
-        const contentType = response.headers['content-type'] || ''
+        const statusCode = response?.status() || 0
+        const contentType = response?.headers()['content-type'] || ''
         const isHtml = contentType.includes('text/html') || contentType.includes('xhtml')
+
+        // Get the rendered HTML (after JS execution)
+        const html = isHtml ? await page.content() : null
+        const finalUrl = page.url()
+
+        await page.close()
 
         return {
             url,
-            finalUrl: response.request?.res?.responseUrl || url,
-            statusCode: response.status,
-            html: isHtml ? response.data : null,
+            finalUrl,
+            statusCode,
+            html,
             isHtml,
             contentType
         }
     } catch (error) {
         lastFetchTime = Date.now()
 
+        if (page) {
+            try { await page.close() } catch { }
+        }
+
         // Retry on timeout or network errors
-        if (retryCount < MAX_RETRIES && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || error.message.includes('timeout'))) {
+        if (retryCount < MAX_RETRIES && (error.message.includes('timeout') || error.message.includes('net::'))) {
             const backoffMs = Math.pow(2, retryCount) * 1000 // 1s, 2s, 4s...
             console.log(`   ⏳ Retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs}ms...`)
             await new Promise(resolve => setTimeout(resolve, backoffMs))
@@ -582,6 +624,9 @@ export async function runCrawl(siteId, pageLimit = 200, excludePatterns = [], ru
         console.error('\n❌ Crawl failed:', error.message)
         await updateSiteStatus(siteId, 'error')
         throw error
+    } finally {
+        // Always close browser when done
+        await closeBrowser()
     }
 }
 
