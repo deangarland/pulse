@@ -378,6 +378,17 @@ async function fetchPage(url, retryCount = 0) {
 
         lastFetchTime = Date.now()
 
+        // Scroll page to trigger lazy-loaded content (carousels, etc.)
+        await page.evaluate(async () => {
+            const scrollHeight = document.body.scrollHeight
+            for (let i = 0; i < scrollHeight; i += 500) {
+                window.scrollTo(0, i)
+                await new Promise(r => setTimeout(r, 50))
+            }
+            window.scrollTo(0, 0)
+        })
+        await page.waitForTimeout(1000)
+
         const statusCode = response?.status() || 0
         const contentType = response?.headers()['content-type'] || ''
         const isHtml = contentType.includes('text/html') || contentType.includes('xhtml')
@@ -676,6 +687,22 @@ export async function fetchPageWithPlaywright(url) {
             timeout: 30000,
             waitUntil: 'networkidle'
         })
+
+        // Scroll page to trigger lazy-loaded content (carousels, etc.)
+        console.log('📜 Scrolling to trigger lazy content...')
+        await page.evaluate(async () => {
+            // Scroll to bottom in steps to trigger lazy loading
+            const scrollHeight = document.body.scrollHeight
+            for (let i = 0; i < scrollHeight; i += 500) {
+                window.scrollTo(0, i)
+                await new Promise(r => setTimeout(r, 100))
+            }
+            // Scroll back to top
+            window.scrollTo(0, 0)
+        })
+
+        // Wait for any lazy-loaded content to render
+        await page.waitForTimeout(2000)
 
         const statusCode = response?.status() || 0
         const contentType = response?.headers()['content-type'] || ''
