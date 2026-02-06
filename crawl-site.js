@@ -653,3 +653,60 @@ if (isMainModule) {
 
 // Export functions for use by server.js
 export { parsePage, cleanHtml }
+
+// Standalone single-page fetch with Playwright (manages its own browser lifecycle)
+export async function fetchPageWithPlaywright(url) {
+    let browser = null
+    let page = null
+
+    try {
+        console.log('🌐 Launching browser for single-page fetch...')
+        browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        })
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 720 }
+        })
+        page = await context.newPage()
+
+        // Navigate and wait for JS to load
+        const response = await page.goto(url, {
+            timeout: 30000,
+            waitUntil: 'networkidle'
+        })
+
+        const statusCode = response?.status() || 0
+        const contentType = response?.headers()['content-type'] || ''
+        const isHtml = contentType.includes('text/html') || contentType.includes('xhtml')
+        const html = isHtml ? await page.content() : null
+        const finalUrl = page.url()
+
+        console.log(`✓ Fetched with Playwright: ${statusCode}`)
+
+        return {
+            url,
+            finalUrl,
+            statusCode,
+            html,
+            isHtml,
+            contentType
+        }
+    } catch (error) {
+        console.error('Playwright fetch error:', error.message)
+        return {
+            url,
+            finalUrl: url,
+            statusCode: 0,
+            html: null,
+            isHtml: false,
+            error: error.message
+        }
+    } finally {
+        if (browser) {
+            await browser.close()
+            console.log('🌐 Browser closed')
+        }
+    }
+}

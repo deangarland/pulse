@@ -1786,7 +1786,7 @@ app.delete('/api/sites/:id', async (req, res) => {
 // PAGE-LEVEL ACTIONS
 // ============================================================
 
-// POST /api/pages/:id/recrawl - Re-crawl a single page
+// POST /api/pages/:id/recrawl - Re-crawl a single page with Playwright
 app.post('/api/pages/:id/recrawl', async (req, res) => {
     try {
         const { id } = req.params
@@ -1802,32 +1802,29 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
             return res.status(404).json({ error: 'Page not found' })
         }
 
-        console.log(`🔄 Re-crawling page: ${page.url}`)
-
-        // Fetch the page
-        const response = await fetch(page.url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PulseCrawler/1.0)' },
-            timeout: 30000
-        })
-
-        if (!response.ok) {
-            return res.status(response.status).json({ error: `Failed to fetch: ${response.status}` })
-        }
-
-        const html = await response.text()
+        console.log(`🔄 Re-crawling page with Playwright: ${page.url}`)
 
         // Import and use the parsing/cleaning functions from crawl-site.js
-        const { parsePage, cleanHtml } = await import('./crawl-site.js')
+        const { parsePage, cleanHtml, fetchPageWithPlaywright } = await import('./crawl-site.js')
 
-        const parsed = parsePage(html, page.url)
-        const cleanedHtml = cleanHtml(html)
+        // Fetch using Playwright for full JS rendering
+        const result = await fetchPageWithPlaywright(page.url)
+
+        if (!result.html) {
+            return res.status(result.statusCode || 500).json({
+                error: result.error || `Failed to fetch: ${result.statusCode}`
+            })
+        }
+
+        const parsed = parsePage(result.html, result.finalUrl)
+        const cleanedHtml = cleanHtml(result.html)
 
         // Update the page in database
         const { error: updateError } = await getSupabase()
             .from('page_index')
             .update({
                 title: parsed.title,
-                html_content: html,
+                html_content: result.html,
                 cleaned_html: cleanedHtml,
                 main_content: parsed.main_content || null,
                 headings: parsed.headings || null,
@@ -1842,8 +1839,8 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
             return res.status(500).json({ error: updateError.message })
         }
 
-        console.log(`✅ Re-crawled: ${page.url}`)
-        res.json({ success: true, message: 'Page re-crawled successfully' })
+        console.log(`✅ Re-crawled with Playwright: ${page.url}`)
+        res.json({ success: true, message: 'Page re-crawled successfully with Playwright' })
     } catch (error) {
         console.error('Re-crawl page error:', error)
         res.status(500).json({ error: error.message })
