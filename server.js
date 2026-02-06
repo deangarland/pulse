@@ -2522,8 +2522,9 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
                 enhanced: enhancement.enhanced_content,
                 reasoning: enhancement.reasoning,
                 changes: enhancement.changes_made || [],
-                heading_level: sectionDef.heading_level || null,
+                heading_level: sectionDef?.heading_level || null,
                 is_new_section: enhancement.is_new_section || false,
+                section_name: effectiveSectionName,  // Store the section name for unmatched sections
                 enhanced_at: new Date().toISOString()
             }
 
