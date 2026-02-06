@@ -107,6 +107,10 @@ function cleanHtml(rawHtml) {
     // Remove navigation and non-content elements
     $('nav, header, footer, aside, noscript, iframe, form, [role="navigation"], [role="banner"], [role="contentinfo"], .nav, .navigation, .header, .footer, .sidebar').remove()
 
+    // Remove Shopify sitewide/global sections (these appear on every page)
+    // These should be enhanced globally, not per-page
+    $('[data-section-type="gallery-carousel"], [data-section-type="testimonials"], [data-section-type="newsletter"], [data-section-type="contact-form"], [data-section-type="announcement-bar"]').remove()
+
     // Remove images with base64 data URIs (they bloat the content)
     $('img').each((_, el) => {
         const src = $(el).attr('src') || ''
