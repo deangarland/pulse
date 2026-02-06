@@ -1490,36 +1490,62 @@ ${schema?.overall_reasoning || 'N/A'}
                                                     )
                                                 })()}
 
-                                                {/* Sections List */}
+                                                {/* Sections List - Use section_order if available, otherwise use analysis order */}
                                                 <div className="space-y-3">
                                                     <h4 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Enhanced Sections</h4>
 
-                                                    {contentAnalysis.sections.map((section) => (
-                                                        <EnhancedSectionCard
-                                                            key={section.section_id}
-                                                            section={section}
-                                                            storedContent={page.enhanced_content?.sections?.[section.section_id]}
-                                                            onEnhance={() => enhanceSectionMutation.mutate({
-                                                                pageId: page.id,
-                                                                sectionId: section.section_id,
-                                                                sectionContent: section.content_summary
-                                                            })}
-                                                            onSave={(content) => saveEnhancedContentMutation.mutate({
-                                                                pageId: page.id,
-                                                                sectionId: section.section_id,
-                                                                content
-                                                            })}
-                                                            isEnhancing={enhanceSectionMutation.isPending}
-                                                            isSaving={saveEnhancedContentMutation.isPending}
-                                                        />
-                                                    ))}
+                                                    {(() => {
+                                                        // Get section order from new format, or just use the order in the array
+                                                        const sectionOrder = page.enhanced_content?.section_order ||
+                                                            contentAnalysis.sections.map(s => s.section_id)
+
+                                                        // Create a map for quick lookup
+                                                        const sectionMap = new Map(contentAnalysis.sections.map(s => [s.section_id, s]))
+
+                                                        // Render in order, including unmatched sections
+                                                        return sectionOrder.map((sectionId: string) => {
+                                                            const section = sectionMap.get(sectionId)
+                                                            if (!section) return null
+
+                                                            // Check if this is an unmatched section (new format)
+                                                            const isUnmatched = sectionId.startsWith('unmatched_') || section.template_match === false
+
+                                                            return (
+                                                                <div key={section.section_id} className={isUnmatched ? 'border-l-4 border-purple-400 pl-2' : ''}>
+                                                                    {isUnmatched && (
+                                                                        <span className="text-xs text-purple-600 font-medium uppercase tracking-wider mb-1 block">
+                                                                            Unmatched Section
+                                                                        </span>
+                                                                    )}
+                                                                    <EnhancedSectionCard
+                                                                        section={section}
+                                                                        storedContent={page.enhanced_content?.sections?.[section.section_id]}
+                                                                        onEnhance={() => enhanceSectionMutation.mutate({
+                                                                            pageId: page.id,
+                                                                            sectionId: section.section_id,
+                                                                            sectionContent: section.content_summary
+                                                                        })}
+                                                                        onSave={(content) => saveEnhancedContentMutation.mutate({
+                                                                            pageId: page.id,
+                                                                            sectionId: section.section_id,
+                                                                            content
+                                                                        })}
+                                                                        isEnhancing={enhanceSectionMutation.isPending}
+                                                                        isSaving={saveEnhancedContentMutation.isPending}
+                                                                    />
+                                                                </div>
+                                                            )
+                                                        })
+                                                    })()}
                                                 </div>
 
                                                 {/* Missing Sections Summary */}
                                                 {contentAnalysis.missing_sections.length > 0 && (
                                                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                                         <p className="text-sm font-medium text-amber-800">
-                                                            Missing Sections: {contentAnalysis.missing_sections.join(', ')}
+                                                            Missing Sections: {contentAnalysis.missing_sections.map(s =>
+                                                                typeof s === 'string' ? s : (s.section_name || s.section_id || 'Unknown')
+                                                            ).join(', ')}
                                                         </p>
                                                     </div>
                                                 )}
