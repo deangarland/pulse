@@ -74,11 +74,14 @@ interface Page {
             enhanced_at?: string
             user_edited?: boolean
             edited_at?: string
+            section_name?: string  // For unmatched sections
         }>
         section_analysis?: any[]
         overall_score?: number
+        overall_assessment?: string  // New format: text assessment instead of numeric score
         analysis_summary?: string
-        missing_sections?: string[]
+        missing_sections?: any[]  // Changed to any[] to support both old string[] and new object[]
+        section_order?: string[]  // New format: ordered section IDs
         analyzed_at?: string
     } | null
     content_analyzed_at: string | null
@@ -496,9 +499,12 @@ interface EnhancedSectionCardProps {
     section: {
         section_id: string
         section_name: string
-        required: boolean
-        found: boolean
-        location?: string
+        required?: boolean  // Optional for new format
+        found?: boolean  // Old format
+        template_match?: boolean  // New format
+        auto_enhance?: boolean  // New format
+        heading_text?: string  // New format
+        location?: string  // Old format
         quality_score?: number
         content_summary?: string
         recommendation?: string
@@ -988,27 +994,30 @@ export default function PageContent() {
         sections: Array<{
             section_id: string
             section_name: string
-            required: boolean
-            found: boolean
-            location?: string
+            required?: boolean  // Old format
+            found?: boolean  // Old format
+            template_match?: boolean  // New format
+            auto_enhance?: boolean  // New format
+            heading_text?: string  // New format
+            location?: string  // Old format
             content_summary?: string
             quality_score?: number
             recommendation?: string
         }>
-        missing_sections: string[]
+        missing_sections: any[]  // Support both string[] and object[]
         overall_score: number
         summary: string
     } | null>(null)
 
     // Load saved analysis from page.enhanced_content when page changes
     useEffect(() => {
-        if (page?.enhanced_content?.section_analysis && page.enhanced_content.overall_score !== undefined) {
-            // Reconstruct contentAnalysis from saved data
+        if (page?.enhanced_content?.section_analysis) {
+            // Reconstruct contentAnalysis from saved data (support both old and new formats)
             setContentAnalysis({
                 sections: page.enhanced_content.section_analysis,
                 missing_sections: page.enhanced_content.missing_sections || [],
-                overall_score: page.enhanced_content.overall_score,
-                summary: page.enhanced_content.analysis_summary || ''
+                overall_score: page.enhanced_content.overall_score || 0,
+                summary: page.enhanced_content.overall_assessment || page.enhanced_content.analysis_summary || ''
             })
         } else {
             // Clear analysis if page has no saved data
@@ -1016,11 +1025,11 @@ export default function PageContent() {
         }
     }, [page?.id, page?.enhanced_content?.analyzed_at])
 
-    // Content analysis mutation
+    // Content analysis mutation (now uses analyze-and-enhance for full workflow)
     const analyzeContentMutation = useMutation({
         mutationFn: async ({ pageId, pageType, model }: { pageId: string; pageType?: string; model?: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
-            const response = await fetch(`${apiUrl}/api/analyze-content`, {
+            const response = await fetch(`${apiUrl}/api/analyze-and-enhance`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pageId, pageType, model })
@@ -1032,7 +1041,10 @@ export default function PageContent() {
             return response.json()
         },
         onSuccess: (data) => {
-            toast.success('Content analyzed!', { description: `Score: ${data.analysis.overall_score}/100` })
+            const summary = data.summary || {}
+            toast.success('Analysis & Enhancement Complete!', {
+                description: `Found ${summary.sectionsFound || 0} sections, enhanced ${summary.sectionsEnhanced || 0}`
+            })
             setContentAnalysis(data.analysis)
             // Refetch page to get updated enhanced_content from DB
             refetchPage()
@@ -1320,9 +1332,9 @@ ${schema?.overall_reasoning || 'N/A'}
                                             className="gap-2"
                                         >
                                             {analyzeContentMutation.isPending ? (
-                                                <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</>
+                                                <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing & Enhancing...</>
                                             ) : (
-                                                <><Wand2 className="h-4 w-4" /> Analyze Content</>
+                                                <><Wand2 className="h-4 w-4" /> Analyze & Enhance</>
                                             )}
                                         </Button>
                                     </div>
@@ -1432,10 +1444,11 @@ ${schema?.overall_reasoning || 'N/A'}
                                                 </div>
 
 
-                                                {/* Enhance All Found Sections Button */}
+                                                {/* Enhance All Found Sections Button - for any sections not yet enhanced */}
                                                 {(() => {
+                                                    // Support both old format (found) and new format (auto_enhance)
                                                     const foundSections = contentAnalysis.sections.filter(s =>
-                                                        s.found && !page.enhanced_content?.sections?.[s.section_id]?.enhanced
+                                                        (s.found || s.auto_enhance) && !page.enhanced_content?.sections?.[s.section_id]?.enhanced
                                                     )
                                                     return foundSections.length > 0 && (
                                                         <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">

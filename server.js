@@ -528,25 +528,22 @@ Description: ${page.meta_tags?.description || ''}
 Content: ${(page.main_content || '').substring(0, 3000)}
     `.trim()
 
-    const prompt = `Analyze this medical/aesthetic procedure page and extract schema.org fields.
+    // Fetch prompt from database
+    const promptData = await getPrompt('schema_procedure_extraction')
+    const userPromptTemplate = promptData?.user_prompt_template || ''
+    const selectedModel = promptData?.default_model || 'gpt-4o-mini'
 
-PAGE CONTENT:
-${content}
+    // Substitute variables
+    const prompt = userPromptTemplate.replace(/\{\{content\}\}/g, content)
 
-Extract the following (respond ONLY with valid JSON, no markdown):
-{
-  "bodyLocation": "The primary body part treated (e.g., 'Face', 'Nose', 'Lips', 'Forehead', 'Neck', 'Eyelids', etc.) or null if unclear",
-  "procedureType": "One of: 'NoninvasiveProcedure' (injections, lasers, peels), 'SurgicalProcedure' (incisions, surgery), 'PercutaneousProcedure' (catheter-based), or null if unclear",
-  "howPerformed": "A 1-2 sentence summary of how this procedure is performed. Return null if the page doesn't describe procedure steps.",
-  "preparation": "Pre-procedure instructions mentioned on the page (e.g., 'Avoid blood thinners for 7 days'). Return null if page doesn't mention preparation.",
-  "followup": "Post-procedure expectations mentioned on the page (e.g., 'Results last 6-12 months', 'Minimal downtime'). Return null if page doesn't mention followup/recovery."
-}
-
-CRITICAL: Only include information that is explicitly stated on the page. Return null for any field where the page does not provide that information.`
+    if (!prompt) {
+        console.error('Schema: Procedure Field Extraction prompt not found in database')
+        return { bodyLocation: null, procedureType: null, howPerformed: null, preparation: null, followup: null, tokens: { input: 0, output: 0 } }
+    }
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: selectedModel,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.1,
             max_tokens: 350,
@@ -570,6 +567,7 @@ CRITICAL: Only include information that is explicitly stated on the page. Return
     }
 }
 
+
 // Helper: Extract team member fields using LLM
 async function extractTeamMemberFieldsWithLLM(page) {
     if (!openai) return { name: null, jobTitle: null, credentials: null, isPhysician: false, specialties: [], education: null, tokens: { input: 0, output: 0 } }
@@ -580,26 +578,22 @@ Description: ${page.meta_tags?.description || ''}
 Content: ${(page.main_content || '').substring(0, 2000)}
     `.trim()
 
-    const prompt = `Analyze this staff member profile page and extract information.
+    // Fetch prompt from database
+    const promptData = await getPrompt('schema_team_extraction')
+    const userPromptTemplate = promptData?.user_prompt_template || ''
+    const selectedModel = promptData?.default_model || 'gpt-4o-mini'
 
-PAGE CONTENT:
-${content}
+    // Substitute variables
+    const prompt = userPromptTemplate.replace(/\{\{content\}\}/g, content)
 
-Extract the following (respond ONLY with valid JSON, no markdown):
-{
-  "name": "Full name of the person (e.g., 'Dr. John Smith' or 'Jane Doe, RN')",
-  "jobTitle": "Their job title (e.g., 'Medical Director', 'Lead Esthetician', 'PA-C')",
-  "credentials": "Professional credentials/suffixes (e.g., 'MD', 'PA-C', 'RN', 'NP-C')",
-  "isPhysician": true if they are a Doctor/MD/DO/Physician, false otherwise,
-  "specialties": ["Array of specialties or areas of expertise mentioned"],
-  "education": "Educational institution mentioned (or null if not found)"
-}
-
-Return null for any field not explicitly mentioned on the page.`
+    if (!prompt) {
+        console.error('Schema: Team Member Extraction prompt not found in database')
+        return { name: null, jobTitle: null, credentials: null, isPhysician: false, specialties: [], education: null, tokens: { input: 0, output: 0 } }
+    }
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: selectedModel,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.1,
             max_tokens: 300,
@@ -1925,72 +1919,29 @@ app.post('/api/analyze-content', async (req, res) => {
             return res.status(404).json({ error: `No template found for page type: ${effectivePageType}` })
         }
 
-        // Build analysis prompt
+        // Build sections list for template substitution
         const sectionsList = template.sections.map(s =>
             `- ${s.id}: "${s.name}" (${s.required ? 'required' : 'optional'}) - ${s.description}`
         ).join('\n')
 
-        const analysisPrompt = `Analyze this webpage content and identify which expected sections are present or missing.
-
-EXPECTED SECTIONS FOR ${effectivePageType.toUpperCase()} PAGE:
-${sectionsList}
-
-PAGE CONTENT:
-Title: ${page.title || 'No title'}
-URL: ${page.url}
-Headings: ${JSON.stringify(page.headings || {})}
-
-HTML Content:
-${(page.cleaned_html || page.main_content || '').substring(0, 15000)}
-
-IMPORTANT: For each section, determine if it should be enhanced:
-- Required sections should ALWAYS be enhanced
-- Optional sections should ALSO be enhanced IF they exist in the original content
-- This means: if the original page has FAQs, testimonials, pricing, or any other optional content, it MUST be preserved and enhanced
-
-For each expected section, determine:
-1. Is it present? (found: true/false)
-2. If found, what heading or location identifies it?
-3. A brief summary of the content (if found)
-4. Should it be enhanced? (should_enhance: true if required OR if found in original)
-5. If missing and required, provide a recommendation
-
-Respond in this exact JSON format:
-{
-    "sections": [
-        {
-            "section_id": "hero",
-            "section_name": "Hero Section",
-            "required": true,
-            "found": true,
-            "should_enhance": true,
-            "location": "First H1: 'Botox Treatments'",
-            "content_summary": "Hero with title and tagline about Botox treatments",
-            "quality_score": 8,
-            "recommendation": null
-        },
-        {
-            "section_id": "faq",
-            "section_name": "FAQ Section",
-            "required": false,
-            "found": true,
-            "should_enhance": true,
-            "location": "H2: 'Frequently Asked Questions'",
-            "content_summary": "5 Q&A pairs about the procedure",
-            "quality_score": 7,
-            "recommendation": "Could add more questions about recovery time"
-        }
-    ],
-    "missing_sections": ["pricing"],
-    "overall_score": 75,
-    "summary": "Page has 6 of 10 expected sections. Missing pricing section that could improve SEO."
-}`
-
-
         // Fetch prompt from database
         const promptData = await getPrompt('content_analysis')
-        const systemPrompt = promptData?.system_prompt || template.section_analysis_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.'
+        const systemPrompt = promptData?.system_prompt || 'You are a content analyst. Analyze webpage structure and identify sections.'
+        const userPromptTemplate = promptData?.user_prompt_template || ''
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
+
+        // Substitute variables in the user prompt template
+        const analysisPrompt = userPromptTemplate
+            .replace(/\{\{page_type\}\}/g, effectivePageType.toUpperCase())
+            .replace(/\{\{sections_list\}\}/g, sectionsList)
+            .replace(/\{\{page_title\}\}/g, page.title || 'No title')
+            .replace(/\{\{page_url\}\}/g, page.url)
+            .replace(/\{\{headings\}\}/g, JSON.stringify(page.headings || {}))
+            .replace(/\{\{html_content\}\}/g, (page.cleaned_html || page.main_content || '').substring(0, 15000))
+
+        if (!analysisPrompt) {
+            return res.status(500).json({ error: 'Content Analysis prompt not found in database. Please add it via Admin > Prompts.' })
+        }
 
         // Call AI using unified multi-provider function
         const aiResult = await callAI({
@@ -2037,14 +1988,19 @@ Respond in this exact JSON format:
 
             const existingContent = existingPage?.enhanced_content || { sections: {} }
 
+            // Handle new prompt format (found_sections) vs old format (sections)
+            const foundSections = analysis.found_sections || analysis.sections || []
+            const missingSections = analysis.missing_sections || []
+            const sectionOrder = analysis.section_order || foundSections.map(s => s.section_id)
+
             // Merge analysis results with existing content
-            existingContent.overall_score = analysis.overall_score
-            existingContent.analysis_summary = analysis.summary
-            existingContent.missing_sections = analysis.missing_sections
+            existingContent.overall_assessment = analysis.overall_assessment || analysis.summary
+            existingContent.missing_sections = missingSections
+            existingContent.section_order = sectionOrder
             existingContent.analyzed_at = new Date().toISOString()
 
-            // Store section analysis (not sections content yet)
-            existingContent.section_analysis = analysis.sections
+            // Store section analysis with new structure
+            existingContent.section_analysis = foundSections
 
             await getSupabase()
                 .from('page_index')
@@ -2055,6 +2011,8 @@ Respond in this exact JSON format:
                 .eq('id', pageId)
 
             console.log(`✅ Saved content analysis for page ${pageId}`)
+            console.log(`   - Found ${foundSections.length} sections (${foundSections.filter(s => s.template_match).length} matched, ${foundSections.filter(s => !s.template_match).length} unmatched)`)
+            console.log(`   - Missing ${missingSections.length} template sections`)
         } catch (saveError) {
             console.error('Failed to save analysis:', saveError)
         }
@@ -2073,6 +2031,127 @@ Respond in this exact JSON format:
 
     } catch (error) {
         console.error('Content analysis error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// POST /api/analyze-and-enhance - Full workflow: analyze + auto-enhance all found sections
+app.post('/api/analyze-and-enhance', async (req, res) => {
+    try {
+        const { pageId, model } = req.body
+
+        if (!pageId) {
+            return res.status(400).json({ error: 'pageId is required' })
+        }
+
+        console.log(`\n🚀 ANALYZE AND ENHANCE: Starting full workflow for page ${pageId}`)
+        const workflowStart = Date.now()
+
+        // Step 1: Call analyze-content internally
+        const analyzeResponse = await fetch(`http://localhost:${PORT}/api/analyze-content`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pageId, model })
+        })
+
+        if (!analyzeResponse.ok) {
+            const errorData = await analyzeResponse.json()
+            return res.status(analyzeResponse.status).json({ error: errorData.error || 'Analysis failed' })
+        }
+
+        const analysisResult = await analyzeResponse.json()
+        console.log(`   ✅ Analysis complete: ${analysisResult.analysis?.found_sections?.length || 0} sections found`)
+
+        // Step 2: Auto-enhance all found sections
+        const foundSections = analysisResult.analysis?.found_sections || []
+        const enhancementResults = []
+        let totalEnhanceTokens = { input: 0, output: 0 }
+
+        for (const section of foundSections) {
+            if (!section.auto_enhance) {
+                console.log(`   ⏭️ Skipping ${section.section_id} (auto_enhance=false)`)
+                continue
+            }
+
+            console.log(`   🔄 Enhancing section: ${section.section_id} (${section.section_name})`)
+
+            try {
+                const enhanceResponse = await fetch(`http://localhost:${PORT}/api/enhance-section`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pageId,
+                        sectionId: section.section_id,
+                        model: model || 'gpt-4o'
+                    })
+                })
+
+                if (enhanceResponse.ok) {
+                    const enhanceResult = await enhanceResponse.json()
+                    enhancementResults.push({
+                        section_id: section.section_id,
+                        section_name: section.section_name,
+                        success: true,
+                        tokens: enhanceResult.tokens
+                    })
+                    if (enhanceResult.tokens) {
+                        totalEnhanceTokens.input += enhanceResult.tokens.input || 0
+                        totalEnhanceTokens.output += enhanceResult.tokens.output || 0
+                    }
+                    console.log(`   ✅ Enhanced ${section.section_id}`)
+                } else {
+                    const errorData = await enhanceResponse.json()
+                    enhancementResults.push({
+                        section_id: section.section_id,
+                        section_name: section.section_name,
+                        success: false,
+                        error: errorData.error
+                    })
+                    console.log(`   ❌ Failed to enhance ${section.section_id}: ${errorData.error}`)
+                }
+            } catch (enhanceError) {
+                enhancementResults.push({
+                    section_id: section.section_id,
+                    section_name: section.section_name,
+                    success: false,
+                    error: enhanceError.message
+                })
+                console.log(`   ❌ Error enhancing ${section.section_id}: ${enhanceError.message}`)
+            }
+        }
+
+        const workflowDuration = Date.now() - workflowStart
+        const successCount = enhancementResults.filter(r => r.success).length
+
+        console.log(`\n✨ WORKFLOW COMPLETE in ${(workflowDuration / 1000).toFixed(1)}s`)
+        console.log(`   - Analyzed: ${foundSections.length} sections`)
+        console.log(`   - Enhanced: ${successCount}/${enhancementResults.length} sections`)
+
+        res.json({
+            success: true,
+            pageId,
+            analysis: analysisResult.analysis,
+            enhancements: enhancementResults,
+            summary: {
+                sectionsFound: foundSections.length,
+                sectionsEnhanced: successCount,
+                sectionsFailed: enhancementResults.length - successCount,
+                missingOptional: analysisResult.analysis?.missing_sections?.filter(s => !s.required)?.length || 0,
+                missingRequired: analysisResult.analysis?.missing_sections?.filter(s => s.required)?.length || 0
+            },
+            tokens: {
+                analysis: analysisResult.tokens,
+                enhancement: totalEnhanceTokens,
+                total: {
+                    input: (analysisResult.tokens?.input || 0) + totalEnhanceTokens.input,
+                    output: (analysisResult.tokens?.output || 0) + totalEnhanceTokens.output
+                }
+            },
+            durationMs: workflowDuration
+        })
+
+    } catch (error) {
+        console.error('Analyze and enhance error:', error)
         res.status(500).json({ error: error.message })
     }
 })
@@ -2190,14 +2269,21 @@ app.post('/api/enhance-section', async (req, res) => {
             return res.status(404).json({ error: `No template found for page type: ${page.page_type}` })
         }
 
-        // Find the section definition
+        // Find the section definition (may be null for unmatched sections)
         const sectionDef = template.sections.find(s => s.id === sectionId)
-        if (!sectionDef) {
-            return res.status(404).json({ error: `Section '${sectionId}' not found in template` })
-        }
 
         // Get the section analysis to find where the section is located
         const sectionAnalysis = page.enhanced_content?.section_analysis?.find(s => s.section_id === sectionId)
+
+        // For unmatched sections, we need the analysis data
+        const isUnmatchedSection = sectionId.startsWith('unmatched_') || (sectionAnalysis && !sectionAnalysis.template_match)
+        if (!sectionDef && !isUnmatchedSection) {
+            return res.status(404).json({ error: `Section '${sectionId}' not found in template` })
+        }
+
+        // Use section analysis data for unmatched sections
+        const effectiveSectionName = sectionDef?.name || sectionAnalysis?.section_name || sectionId
+        const effectiveSectionDesc = sectionDef?.description || sectionAnalysis?.content_summary || 'Content section'
 
         // Try to extract the actual section content from the page HTML
         let actualSectionContent = ''
@@ -2205,20 +2291,25 @@ app.post('/api/enhance-section', async (req, res) => {
 
         console.log(`📋 Section Enhancement: ${sectionId}`)
         console.log(`   - sectionAnalysis found: ${!!sectionAnalysis}`)
-        console.log(`   - sectionAnalysis.found: ${sectionAnalysis?.found}`)
-        console.log(`   - sectionAnalysis.location: ${sectionAnalysis?.location}`)
+        console.log(`   - template_match: ${sectionAnalysis?.template_match}`)
+        console.log(`   - heading_text: ${sectionAnalysis?.heading_text}`)
         console.log(`   - cleanedHtml length: ${cleanedHtml.length}`)
         console.log(`   - sectionContent param length: ${(sectionContent || '').length}`)
 
-        if (sectionAnalysis?.found && sectionAnalysis?.location && cleanedHtml) {
-            // Extract location hint (e.g., "H2: 'Frequently Asked Questions'" or "H2: 'FAQ'")
-            const locationHint = sectionAnalysis.location
+        // Support both old format (found, location) and new format (template_match, heading_text)
+        const sectionExists = sectionAnalysis?.found || sectionAnalysis?.template_match !== undefined
+        const headingOrLocation = sectionAnalysis?.heading_text || sectionAnalysis?.location
 
-            // Try to find the section content in the HTML
-            // Look for heading that matches the location and extract content after it
-            const headingMatch = locationHint.match(/H[1-6]:\s*['"]?([^'"]+)['"]?/i)
-            if (headingMatch) {
-                const headingText = headingMatch[1].toLowerCase().trim()
+        if (sectionExists && headingOrLocation && cleanedHtml) {
+            // Extract heading text (new format uses heading_text directly, old format needs parsing)
+            let headingText = sectionAnalysis?.heading_text
+            if (!headingText && sectionAnalysis?.location) {
+                // Extract location hint (e.g., "H2: 'Frequently Asked Questions'" or "H2: 'FAQ'")
+                const headingMatch = sectionAnalysis.location.match(/H[1-6]:\s*['"]?([^'"]+)['"]?/i)
+                headingText = headingMatch ? headingMatch[1] : null
+            }
+
+            if (headingText) {
                 console.log(`   - Looking for heading text: "${headingText}"`)
 
                 // Find the heading in the HTML and extract content until the next major heading
@@ -2368,9 +2459,9 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
 
         // Substitute variables in the user prompt template
         const userPrompt = userPromptTemplate
-            .replace(/\{\{section_name\}\}/g, sectionDef.name)
+            .replace(/\{\{section_name\}\}/g, effectiveSectionName)
             .replace(/\{\{section_id\}\}/g, sectionId)
-            .replace(/\{\{section_description\}\}/g, sectionDef.description || '')
+            .replace(/\{\{section_description\}\}/g, effectiveSectionDesc)
             .replace(/\{\{page_title\}\}/g, page.title || '')
             .replace(/\{\{page_url\}\}/g, page.url || '')
             .replace(/\{\{business_name\}\}/g, businessName)
