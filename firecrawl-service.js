@@ -121,8 +121,7 @@ export function parseFirecrawlResponse(data, siteId) {
         title: data.metadata?.title || '',
         html_content: data.rawHtml,        // Full HTML for reference
         cleaned_html: data.html,           // Cleaned HTML (main content only)
-        markdown_content: data.markdown,   // LLM-ready markdown
-        main_content: data.markdown,       // For backward compatibility
+        main_content: data.markdown,       // LLM-ready markdown
         headings: headings,
         meta_tags: {
             description: data.metadata?.description || '',
