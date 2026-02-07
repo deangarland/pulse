@@ -18,7 +18,7 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil, Save } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil, Save, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 import { PageEditSheet } from "@/components/PageEditSheet"
@@ -977,18 +977,36 @@ export default function PageContent() {
         enabled: !!selectedPage
     })
 
-    // Fetch default model from prompts table
+    // Fetch default model from the page-type-linked enhancement prompt
     const { data: promptSettings } = useQuery({
-        queryKey: ['prompt-default-model'],
+        queryKey: ['prompt-default-model', page?.page_type],
         queryFn: async () => {
-            const { data, error } = await supabase
+            if (!page?.page_type) return null
+            // Get the template for this page type (which has enhancement_prompt_id)
+            const { data: template, error: templateError } = await supabase
+                .from('page_content_templates')
+                .select('enhancement_prompt_id')
+                .eq('page_type', page.page_type)
+                .single()
+            if (templateError || !template?.enhancement_prompt_id) {
+                // Fallback: try the generic page_enhancement prompt
+                const { data: fallback } = await supabase
+                    .from('prompts')
+                    .select('default_model')
+                    .eq('prompt_type', 'page_enhancement')
+                    .single()
+                return fallback
+            }
+            // Get the linked prompt's default model
+            const { data: prompt, error: promptError } = await supabase
                 .from('prompts')
                 .select('default_model')
-                .eq('name', 'Meta Recommendations')
+                .eq('id', template.enhancement_prompt_id)
                 .single()
-            if (error) return { default_model: 'gpt-4o' }
-            return data
-        }
+            if (promptError) return { default_model: 'gpt-4o' }
+            return prompt
+        },
+        enabled: !!page?.page_type
     })
 
     // Update selected model when prompt settings load
@@ -1335,6 +1353,18 @@ ${schema?.overall_reasoning || 'N/A'}
                             ) : (
                                 <RefreshCw className="h-4 w-4" />
                             )}
+                        </Button>
+
+                        {/* View Live Page Button */}
+                        <Button
+                            onClick={() => page?.url && window.open(page.url, '_blank')}
+                            disabled={!page?.url}
+                            variant="outline"
+                            size="sm"
+                            title={page?.url || 'No URL available'}
+                            aria-label="Open page in new tab"
+                        >
+                            <ExternalLink className="h-4 w-4" />
                         </Button>
 
                         {/* Edit Page Button */}
