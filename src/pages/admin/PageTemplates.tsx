@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -55,8 +55,7 @@ export default function PageTemplates() {
     const [editingTemplate, setEditingTemplate] = useState<PageContentTemplate | null>(null)
     const [editForm, setEditForm] = useState({
         sections: [] as PageSection[],
-        enhancement_prompt_id: "" as string,
-        enhancement_guidance: "" as string
+        enhancement_prompt_id: "" as string
     })
 
     // Fetch templates
@@ -89,18 +88,16 @@ export default function PageTemplates() {
 
     // Update template mutation
     const updateMutation = useMutation({
-        mutationFn: async ({ id, sections, enhancement_prompt_id, enhancement_guidance }: {
+        mutationFn: async ({ id, sections, enhancement_prompt_id }: {
             id: string,
             sections: PageSection[],
-            enhancement_prompt_id: string | null,
-            enhancement_guidance: string | null
+            enhancement_prompt_id: string | null
         }) => {
             const { error } = await supabase
                 .from('page_content_templates')
                 .update({
                     sections,
                     enhancement_prompt_id: enhancement_prompt_id || null,
-                    enhancement_guidance: enhancement_guidance || null,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', id)
@@ -121,8 +118,7 @@ export default function PageTemplates() {
         setEditingTemplate(template)
         setEditForm({
             sections: template.sections || [],
-            enhancement_prompt_id: template.enhancement_prompt_id || "",
-            enhancement_guidance: template.enhancement_guidance || ""
+            enhancement_prompt_id: template.enhancement_prompt_id || ""
         })
     }
 
@@ -135,8 +131,7 @@ export default function PageTemplates() {
         updateMutation.mutate({
             id: editingTemplate.id,
             sections: editForm.sections,
-            enhancement_prompt_id: editForm.enhancement_prompt_id || null,
-            enhancement_guidance: editForm.enhancement_guidance || null
+            enhancement_prompt_id: editForm.enhancement_prompt_id || null
         })
     }
 
@@ -334,21 +329,6 @@ export default function PageTemplates() {
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        {/* Enhancement Guidance */}
-                        <div className="space-y-2">
-                            <Label className="text-base font-semibold">Enhancement Guidance</Label>
-                            <p className="text-sm text-muted-foreground">
-                                Page-type-specific SEO strategy injected into the prompt as <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{{enhancement_guidance}}'}</code>.
-                                Focus on what makes this page type unique — don't repeat universal rules.
-                            </p>
-                            <Textarea
-                                value={editForm.enhancement_guidance}
-                                onChange={(e) => setEditForm(prev => ({ ...prev, enhancement_guidance: e.target.value }))}
-                                className="min-h-[160px] font-mono text-sm"
-                                placeholder="Page-type-specific SEO priorities, keyword strategy, and formatting guidance..."
-                            />
                         </div>
 
                         {/* Sections */}
