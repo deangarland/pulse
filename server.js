@@ -178,7 +178,7 @@ async function getPrompt(promptType) {
         const { data, error } = await getSupabase()
             .from('prompts')
             .select('system_prompt, default_model, user_prompt_template')
-            .eq('name', promptType)
+            .eq('prompt_type', promptType)
             .single()
 
         if (error || !data) {
