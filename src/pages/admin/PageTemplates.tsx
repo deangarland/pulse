@@ -13,8 +13,15 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { DataTable, type ColumnDef } from "@/components/DataTable"
-import { Save, Loader2, FileText, Edit2, LayoutTemplate, CheckCircle2 } from "lucide-react"
+import { Save, Loader2, FileText, Edit2, LayoutTemplate, CheckCircle2, Zap } from "lucide-react"
 import { toast } from "sonner"
 
 interface PageSection {
@@ -25,14 +32,21 @@ interface PageSection {
     example_elements?: string[]
 }
 
+interface Prompt {
+    id: string
+    name: string
+    prompt_type: string
+    description: string | null
+}
+
 interface PageContentTemplate {
     id: string
     page_type: string
     name: string
     description: string | null
     sections: PageSection[]
-    section_analysis_prompt: string | null
-    rewrite_prompt: string | null
+    enhancement_prompt_id: string | null
+    enhancement_guidance: string | null
     updated_at: string
 }
 
@@ -41,8 +55,8 @@ export default function PageTemplates() {
     const [editingTemplate, setEditingTemplate] = useState<PageContentTemplate | null>(null)
     const [editForm, setEditForm] = useState({
         sections: [] as PageSection[],
-        section_analysis_prompt: "",
-        rewrite_prompt: ""
+        enhancement_prompt_id: "" as string,
+        enhancement_guidance: "" as string
     })
 
     // Fetch templates
@@ -59,20 +73,34 @@ export default function PageTemplates() {
         }
     })
 
+    // Fetch available prompts for dropdown
+    const { data: prompts } = useQuery({
+        queryKey: ['prompts-list'],
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from('prompts')
+                .select('id, name, prompt_type, description')
+                .order('name')
+
+            if (error) throw error
+            return data as Prompt[]
+        }
+    })
+
     // Update template mutation
     const updateMutation = useMutation({
-        mutationFn: async ({ id, sections, section_analysis_prompt, rewrite_prompt }: {
+        mutationFn: async ({ id, sections, enhancement_prompt_id, enhancement_guidance }: {
             id: string,
             sections: PageSection[],
-            section_analysis_prompt: string,
-            rewrite_prompt: string
+            enhancement_prompt_id: string | null,
+            enhancement_guidance: string | null
         }) => {
             const { error } = await supabase
                 .from('page_content_templates')
                 .update({
                     sections,
-                    section_analysis_prompt,
-                    rewrite_prompt,
+                    enhancement_prompt_id: enhancement_prompt_id || null,
+                    enhancement_guidance: enhancement_guidance || null,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', id)
@@ -81,7 +109,7 @@ export default function PageTemplates() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['page-content-templates'] })
-            toast.success('Template saved successfully')
+            toast.success('Page type saved successfully')
             setEditingTemplate(null)
         },
         onError: (error) => {
@@ -93,8 +121,8 @@ export default function PageTemplates() {
         setEditingTemplate(template)
         setEditForm({
             sections: template.sections || [],
-            section_analysis_prompt: template.section_analysis_prompt || "",
-            rewrite_prompt: template.rewrite_prompt || ""
+            enhancement_prompt_id: template.enhancement_prompt_id || "",
+            enhancement_guidance: template.enhancement_guidance || ""
         })
     }
 
@@ -107,8 +135,8 @@ export default function PageTemplates() {
         updateMutation.mutate({
             id: editingTemplate.id,
             sections: editForm.sections,
-            section_analysis_prompt: editForm.section_analysis_prompt,
-            rewrite_prompt: editForm.rewrite_prompt
+            enhancement_prompt_id: editForm.enhancement_prompt_id || null,
+            enhancement_guidance: editForm.enhancement_guidance || null
         })
     }
 
@@ -125,6 +153,13 @@ export default function PageTemplates() {
         return new Date(dateString).toLocaleDateString()
     }
 
+    // Get prompt name by ID
+    const getPromptName = (promptId: string | null) => {
+        if (!promptId || !prompts) return null
+        const prompt = prompts.find(p => p.id === promptId)
+        return prompt?.name || null
+    }
+
     // Table columns
     const columns: ColumnDef[] = [
         {
@@ -139,7 +174,7 @@ export default function PageTemplates() {
         },
         {
             key: 'name',
-            label: 'Template Name',
+            label: 'Name',
             defaultWidth: 200,
             render: (_value: string, row: PageContentTemplate) => (
                 <div className="flex items-center gap-2">
@@ -179,6 +214,22 @@ export default function PageTemplates() {
             )
         },
         {
+            key: 'enhancement_prompt_id',
+            label: 'Prompt',
+            defaultWidth: 160,
+            render: (value: string | null) => {
+                const name = getPromptName(value)
+                return name ? (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                        <Zap className="h-3 w-3" />
+                        {name}
+                    </Badge>
+                ) : (
+                    <span className="text-xs text-muted-foreground italic">None linked</span>
+                )
+            }
+        },
+        {
             key: 'updated_at',
             label: 'Updated',
             defaultWidth: 100,
@@ -206,9 +257,9 @@ export default function PageTemplates() {
         <div className="space-y-6">
             <div className="flex items-start justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Page Templates</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">Page Types</h1>
                     <p className="text-muted-foreground">
-                        Define expected content sections for each page type. Used by AI to analyze and enhance page content.
+                        Define content sections, enhancement prompts, and SEO guidance for each page type.
                     </p>
                 </div>
             </div>
@@ -217,10 +268,10 @@ export default function PageTemplates() {
                 <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                         <FileText className="h-5 w-5" />
-                        Content Templates ({templates?.length || 0})
+                        Page Types ({templates?.length || 0})
                     </CardTitle>
                     <CardDescription>
-                        Each template defines the sections that should exist on a page type (e.g., Hero, Benefits, FAQ, CTA)
+                        Each page type defines the expected sections, linked AI prompt, and page-specific SEO guidance.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -230,7 +281,7 @@ export default function PageTemplates() {
                         loading={isLoading}
                         storageKey="page_templates_table"
                         rowActions={rowActions}
-                        emptyMessage="No templates found. Run database migrations to create default templates."
+                        emptyMessage="No page types found. Run database migrations to create defaults."
                     />
                 </CardContent>
             </Card>
@@ -242,6 +293,9 @@ export default function PageTemplates() {
                         <DialogTitle className="flex items-center gap-2">
                             <LayoutTemplate className="h-5 w-5" />
                             Edit: {editingTemplate?.name}
+                            <Badge variant="outline" className="font-mono ml-2">
+                                {editingTemplate?.page_type}
+                            </Badge>
                         </DialogTitle>
                     </DialogHeader>
 
@@ -252,6 +306,50 @@ export default function PageTemplates() {
                                 {editingTemplate.description}
                             </div>
                         )}
+
+                        {/* Enhancement Prompt Dropdown */}
+                        <div className="space-y-2">
+                            <Label className="text-base font-semibold flex items-center gap-2">
+                                <Zap className="h-4 w-4" />
+                                Enhancement Prompt
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                                Select which prompt from the Prompts library to use when enhancing pages of this type.
+                            </p>
+                            <Select
+                                value={editForm.enhancement_prompt_id}
+                                onValueChange={(value) => setEditForm(prev => ({ ...prev, enhancement_prompt_id: value }))}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select a prompt..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {prompts?.map((prompt) => (
+                                        <SelectItem key={prompt.id} value={prompt.id}>
+                                            <div className="flex flex-col">
+                                                <span>{prompt.name}</span>
+                                                <span className="text-xs text-muted-foreground">{prompt.prompt_type}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Enhancement Guidance */}
+                        <div className="space-y-2">
+                            <Label className="text-base font-semibold">Enhancement Guidance</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Page-type-specific SEO strategy injected into the prompt as <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{{enhancement_guidance}}'}</code>.
+                                Focus on what makes this page type unique — don't repeat universal rules.
+                            </p>
+                            <Textarea
+                                value={editForm.enhancement_guidance}
+                                onChange={(e) => setEditForm(prev => ({ ...prev, enhancement_guidance: e.target.value }))}
+                                className="min-h-[160px] font-mono text-sm"
+                                placeholder="Page-type-specific SEO priorities, keyword strategy, and formatting guidance..."
+                            />
+                        </div>
 
                         {/* Sections */}
                         <div className="space-y-4">
@@ -298,34 +396,6 @@ export default function PageTemplates() {
                                     </div>
                                 ))}
                             </div>
-                        </div>
-
-                        {/* Section Analysis Prompt */}
-                        <div className="space-y-2">
-                            <Label>Section Analysis Prompt</Label>
-                            <Textarea
-                                value={editForm.section_analysis_prompt}
-                                onChange={(e) => setEditForm(prev => ({ ...prev, section_analysis_prompt: e.target.value }))}
-                                className="min-h-[100px] font-mono text-sm"
-                                placeholder="Prompt for AI to identify sections in existing content..."
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                This prompt tells the AI how to identify each section in the page's existing content.
-                            </p>
-                        </div>
-
-                        {/* Rewrite Prompt */}
-                        <div className="space-y-2">
-                            <Label>Rewrite Prompt</Label>
-                            <Textarea
-                                value={editForm.rewrite_prompt}
-                                onChange={(e) => setEditForm(prev => ({ ...prev, rewrite_prompt: e.target.value }))}
-                                className="min-h-[100px] font-mono text-sm"
-                                placeholder="Prompt for AI to rewrite individual sections..."
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                This prompt guides the AI when rewriting section content for enhancement.
-                            </p>
                         </div>
                     </div>
 

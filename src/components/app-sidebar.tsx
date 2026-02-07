@@ -88,7 +88,7 @@ const adminItems = [
     { title: "Users", url: "/admin/users", icon: Users },
     { title: "Roles", url: "/admin/roles", icon: Shield },
     { title: "Prompts", url: "/admin/prompts", icon: MessageSquare },
-    { title: "Templates", url: "/admin/templates", icon: FileText },
+    { title: "Page Types", url: "/admin/templates", icon: FileText },
     { title: "Token Usage", url: "/admin/tokens", icon: DollarSign },
     { title: "Taxonomy", url: "/admin/taxonomy", icon: Tags },
     { title: "Schema", url: "/admin/schema", icon: Braces },

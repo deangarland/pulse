@@ -186,6 +186,27 @@ async function getPrompt(promptType) {
     }
 }
 
+// Fetch prompt by ID (used when page type has a linked prompt)
+async function getPromptById(promptId) {
+    try {
+        const { data, error } = await getSupabase()
+            .from('prompts')
+            .select('system_prompt, default_model, user_prompt_template, prompt_type')
+            .eq('id', promptId)
+            .single()
+
+        if (error || !data) {
+            console.log(`Prompt ID "${promptId}" not found in DB`)
+            return null
+        }
+
+        return data
+    } catch (err) {
+        console.log(`Error fetching prompt by ID: ${err.message}`)
+        return null
+    }
+}
+
 // Build prompt by replacing placeholders with page data
 function buildMetaPrompt(promptTemplate, page) {
     const headings = page.headings || {}
@@ -2691,11 +2712,19 @@ app.post('/api/enhance-page', async (req, res) => {
             .map(s => `- ${s.id}: "${s.name}" - ${s.description}`)
             .join('\n')
 
-        // Fetch prompt from database
-        const promptData = await getPrompt('page_enhancement')
+        // Fetch prompt linked to this page type (or fall back to page_enhancement)
+        let promptData = null
+        if (template.enhancement_prompt_id) {
+            promptData = await getPromptById(template.enhancement_prompt_id)
+            console.log(`   🔗 Using linked prompt (ID: ${template.enhancement_prompt_id})`)
+        }
+        if (!promptData) {
+            promptData = await getPrompt('page_enhancement')
+            console.log(`   📋 Using default page_enhancement prompt`)
+        }
         if (!promptData) {
             return res.status(500).json({
-                error: 'page_enhancement prompt not found in database. Add it via Admin > Prompts.'
+                error: 'No enhancement prompt found. Link one via Admin > Page Types, or create a page_enhancement prompt.'
             })
         }
 
