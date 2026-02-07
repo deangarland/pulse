@@ -1549,14 +1549,17 @@ app.post('/api/sites', async (req, res) => {
             siteData = data
         }
 
-        // Run crawler in-process (fire and forget)
-        // Import dynamically to avoid circular dependencies
-        import('./crawl-site.js').then(({ runCrawl }) => {
-            runCrawl(siteData.id, page_limit, exclude_paths, run_classifier)
-                .then(() => console.log(`✅ Crawl complete for ${domain}`))
-                .catch(err => console.error(`❌ Crawl failed for ${domain}:`, err.message))
+        // Run crawler in-process using Firecrawl (fire and forget)
+        import('./firecrawl-service.js').then(({ crawlSite }) => {
+            crawlSite(siteData.id, siteData.url, {
+                limit: page_limit,
+                exclude: exclude_paths,
+                runClassifier: run_classifier
+            })
+                .then(() => console.log(`✅ Firecrawl complete for ${domain}`))
+                .catch(err => console.error(`❌ Firecrawl failed for ${domain}:`, err.message))
         }).catch(err => {
-            console.error(`❌ Failed to import crawler:`, err)
+            console.error(`❌ Failed to import Firecrawl service:`, err)
         })
 
         console.log(`🕷️ Started crawler for site ${siteData.id} (${domain})`)
@@ -1796,35 +1799,50 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
             return res.status(404).json({ error: 'Page not found' })
         }
 
-        console.log(`🔄 Re-crawling page with Playwright: ${page.url}`)
+        console.log(`🔄 Re-crawling page with Firecrawl: ${page.url}`)
 
-        // Import and use the parsing/cleaning functions from crawl-site.js
-        const { parsePage, cleanHtml, fetchPageWithPlaywright } = await import('./crawl-site.js')
+        // Import and use Firecrawl service
+        const { scrapePage, parseFirecrawlResponse } = await import('./firecrawl-service.js')
 
-        // Fetch using Playwright for full JS rendering
-        const result = await fetchPageWithPlaywright(page.url)
+        // Fetch using Firecrawl
+        const result = await scrapePage(page.url, { onlyMainContent: true })
 
-        if (!result.html) {
-            return res.status(result.statusCode || 500).json({
-                error: result.error || `Failed to fetch: ${result.statusCode}`
+        if (!result.markdown) {
+            return res.status(500).json({
+                error: 'Firecrawl returned empty content'
             })
         }
 
-        const parsed = parsePage(result.html, result.finalUrl)
-        const cleanedHtml = cleanHtml(result.html)
+        // Extract headings from markdown
+        const headings = []
+        const headingMatches = result.markdown.matchAll(/^(#{1,6})\s+(.+)$/gm)
+        for (const match of headingMatches) {
+            headings.push({ level: match[1].length, text: match[2].trim() })
+        }
 
         // Update the page in database
         const { error: updateError } = await getSupabase()
             .from('page_index')
             .update({
-                title: parsed.title,
-                html_content: result.html,
-                cleaned_html: cleanedHtml,
-                main_content: parsed.main_content || null,
-                headings: parsed.headings || null,
-                meta_tags: { description: parsed.meta_description } || null,
-                links_internal: parsed.internal_links || null,
-                links_external: parsed.external_links || null,
+                title: result.metadata?.title || null,
+                html_content: result.rawHtml,        // Full HTML
+                cleaned_html: result.html,           // Cleaned HTML (main content)
+                markdown_content: result.markdown,   // LLM-ready markdown
+                main_content: result.markdown,       // Backward compatibility
+                headings: headings,
+                meta_tags: {
+                    description: result.metadata?.description || '',
+                    keywords: result.metadata?.keywords || '',
+                    ogTitle: result.metadata?.ogTitle || '',
+                    ogDescription: result.metadata?.ogDescription || '',
+                    ogImage: result.metadata?.ogImage || '',
+                },
+                links_internal: result.links?.filter(l => {
+                    try { return new URL(l, page.url).hostname === new URL(page.url).hostname } catch { return false }
+                }).map(l => { try { return new URL(l, page.url).pathname } catch { return l } }) || [],
+                links_external: result.links?.filter(l => {
+                    try { return new URL(l, page.url).hostname !== new URL(page.url).hostname } catch { return true }
+                }) || [],
                 crawled_at: new Date().toISOString()
             })
             .eq('id', id)
@@ -1833,8 +1851,8 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
             return res.status(500).json({ error: updateError.message })
         }
 
-        console.log(`✅ Re-crawled with Playwright: ${page.url}`)
-        res.json({ success: true, message: 'Page re-crawled successfully with Playwright' })
+        console.log(`✅ Re-crawled with Firecrawl: ${page.url}`)
+        res.json({ success: true, message: 'Page re-crawled successfully with Firecrawl' })
     } catch (error) {
         console.error('Re-crawl page error:', error)
         res.status(500).json({ error: error.message })
