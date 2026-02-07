@@ -1840,8 +1840,7 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
                 title: result.metadata?.title || null,
                 html_content: result.rawHtml,        // Full HTML
                 cleaned_html: result.html,           // Cleaned HTML (main content)
-                markdown_content: result.markdown,   // LLM-ready markdown
-                main_content: result.markdown,       // Backward compatibility
+                main_content: result.markdown,       // LLM-ready markdown
                 headings: headings,
                 meta_tags: {
                     description: result.metadata?.description || '',
