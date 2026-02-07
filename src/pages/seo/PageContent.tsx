@@ -1025,32 +1025,32 @@ export default function PageContent() {
         }
     }, [page?.id, page?.enhanced_content?.analyzed_at])
 
-    // Content analysis mutation (now uses analyze-and-enhance for full workflow)
+    // Content analysis mutation (one-shot page enhancement)
     const analyzeContentMutation = useMutation({
         mutationFn: async ({ pageId, pageType, model }: { pageId: string; pageType?: string; model?: string }) => {
             const apiUrl = import.meta.env.VITE_API_URL || ''
-            const response = await fetch(`${apiUrl}/api/analyze-and-enhance`, {
+            const response = await fetch(`${apiUrl}/api/enhance-page`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId, pageType, model })
+                body: JSON.stringify({ pageId, model })
             })
             if (!response.ok) {
                 const error = await response.json()
-                throw new Error(error.error || 'Failed to analyze content')
+                throw new Error(error.error || 'Failed to enhance page')
             }
             return response.json()
         },
         onSuccess: (data) => {
-            const summary = data.summary || {}
-            toast.success('Analysis & Enhancement Complete!', {
-                description: `Found ${summary.sectionsFound || 0} sections, enhanced ${summary.sectionsEnhanced || 0}`
+            const enhancement = data.enhancement || {}
+            const summary = enhancement.summary || {}
+            toast.success('Page Enhancement Complete!', {
+                description: `Found ${summary.sections_found || 0} sections, SEO score: ${summary.seo_score || 'N/A'}`
             })
-            setContentAnalysis(data.analysis)
             // Refetch page to get updated enhanced_content from DB
             refetchPage()
         },
         onError: (error: Error) => {
-            toast.error('Analysis failed', { description: error.message })
+            toast.error('Enhancement failed', { description: error.message })
         }
     })
 
