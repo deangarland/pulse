@@ -1579,26 +1579,25 @@ ${schema?.overall_reasoning || 'N/A'}
                                                         <div className="w-2 h-2 rounded-full bg-green-500" />
                                                         ENHANCED
                                                     </div>
-                                                    <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto space-y-4">
-                                                        {/* Render all enhanced sections in order */}
-                                                        {contentAnalysis.sections
-                                                            .filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced)
-                                                            .map((section) => {
-                                                                const enhanced = page.enhanced_content?.sections?.[section.section_id]
+                                                    <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto">
+                                                        {/* Combine all enhanced sections into one HTML blob for consistent styling */}
+                                                        {(() => {
+                                                            const enhancedSections = contentAnalysis.sections
+                                                                .filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced)
+                                                                .map(section => page.enhanced_content?.sections?.[section.section_id]?.enhanced || '')
+
+                                                            if (enhancedSections.length === 0) {
                                                                 return (
-                                                                    <div key={section.section_id}>
-                                                                        <div
-                                                                            className="prose prose-sm max-w-none"
-                                                                            dangerouslySetInnerHTML={{ __html: enhanced?.enhanced || '' }}
-                                                                        />
+                                                                    <div className="text-sm text-muted-foreground italic">
+                                                                        No sections enhanced yet. Go to the Enhanced tab to enhance sections.
                                                                     </div>
                                                                 )
-                                                            })}
-                                                        {contentAnalysis.sections.filter(s => page.enhanced_content?.sections?.[s.section_id]?.enhanced).length === 0 && (
-                                                            <div className="text-sm text-muted-foreground italic">
-                                                                No sections enhanced yet. Go to the Enhanced tab to enhance sections.
-                                                            </div>
-                                                        )}
+                                                            }
+
+                                                            // Combine all enhanced HTML and render with same styling as Original
+                                                            const combinedHtml = enhancedSections.join('\n')
+                                                            return <CleanHtmlContent html={combinedHtml} showHeader={false} hideImages={true} />
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
