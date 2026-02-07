@@ -165,15 +165,8 @@ Respond with this exact JSON format:
   }
 }`
 
-// Prompt cache to avoid repeated DB fetches
-const promptCache = {}
-
-// Fetch prompt from database by type (with caching)
+// Fetch prompt from database by type (no caching to ensure fresh updates)
 async function getPrompt(promptType) {
-    if (promptCache[promptType]) {
-        return promptCache[promptType]
-    }
-
     try {
         const { data, error } = await getSupabase()
             .from('prompts')
@@ -186,7 +179,6 @@ async function getPrompt(promptType) {
             return null
         }
 
-        promptCache[promptType] = data
         return data
     } catch (err) {
         console.log(`Error fetching prompt: ${err.message}`)
