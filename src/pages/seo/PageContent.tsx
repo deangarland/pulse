@@ -1032,7 +1032,7 @@ export default function PageContent() {
             const response = await fetch(`${apiUrl}/api/enhance-page`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId, model })
+                body: JSON.stringify({ pageId, pageType, model })
             })
             if (!response.ok) {
                 const error = await response.json()
