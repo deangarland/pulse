@@ -18,7 +18,7 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil, Save, RotateCcw } from "lucide-react"
+import { Sparkles, Download, ChevronDown, ChevronRight, Copy, Check, AlertCircle, CheckCircle2, FileCode, FileText, Tag, Loader2, Wand2, RefreshCw, Pencil, Save } from "lucide-react"
 import { toast } from "sonner"
 import { ModelSelector } from "@/components/ModelSelector"
 import { PageEditSheet } from "@/components/PageEditSheet"
@@ -519,18 +519,14 @@ interface EnhancedSectionCardProps {
         enhanced_at?: string
         user_edited?: boolean
     }
-    onEnhance: () => void
     onSave: (content: string) => void
-    isEnhancing: boolean
     isSaving: boolean
 }
 
 function EnhancedSectionCard({
     section,
     storedContent,
-    onEnhance,
     onSave,
-    isEnhancing,
     isSaving
 }: EnhancedSectionCardProps) {
     const [isEditing, setIsEditing] = useState(false)
@@ -682,16 +678,6 @@ function EnhancedSectionCard({
                                             <Copy className="h-3 w-3" />
                                             Copy HTML
                                         </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={onEnhance}
-                                            disabled={isEnhancing}
-                                            className="gap-1"
-                                        >
-                                            {isEnhancing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                                            Re-generate
-                                        </Button>
                                     </>
                                 )}
                             </div>
@@ -709,20 +695,6 @@ function EnhancedSectionCard({
                                     💡 {section.recommendation || `This ${section.required ? 'required' : 'optional'} section is missing.`}
                                 </p>
                             )}
-                            <Button
-                                size="sm"
-                                variant={section.found ? 'outline' : 'default'}
-                                disabled={isEnhancing}
-                                onClick={onEnhance}
-                                className="gap-1"
-                            >
-                                {isEnhancing ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                    <Sparkles className="h-3 w-3" />
-                                )}
-                                {section.found ? 'Enhance Content' : 'Generate Content'}
-                            </Button>
                         </>
                     )}
                 </div>
@@ -1054,30 +1026,6 @@ export default function PageContent() {
         }
     })
 
-    // Section enhancement mutation
-    const enhanceSectionMutation = useMutation({
-        mutationFn: async ({ pageId, sectionId, sectionContent }: { pageId: string; sectionId: string; sectionContent?: string }) => {
-            const apiUrl = import.meta.env.VITE_API_URL || ''
-            const response = await fetch(`${apiUrl}/api/enhance-section`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pageId, sectionId, sectionContent, model: selectedModel })
-            })
-            if (!response.ok) {
-                const error = await response.json()
-                throw new Error(error.error || 'Failed to enhance section')
-            }
-            return response.json()
-        },
-        onSuccess: (data) => {
-            toast.success('Section enhanced!', { description: data.enhancement?.section_name })
-            // Refetch page to get updated enhanced_content
-            refetchPage()
-        },
-        onError: (error: Error) => {
-            toast.error('Enhancement failed', { description: error.message })
-        }
-    })
 
     // Save edited enhanced content mutation
     const saveEnhancedContentMutation = useMutation({
@@ -1454,38 +1402,7 @@ ${schema?.overall_reasoning || 'N/A'}
                                                         <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                                             <div className="text-sm">
                                                                 <span className="font-medium text-blue-800">{foundSections.length} sections found in original</span>
-                                                                <span className="text-blue-600 ml-1">ready to enhance</span>
                                                             </div>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="default"
-                                                                onClick={async () => {
-                                                                    for (const section of foundSections) {
-                                                                        try {
-                                                                            await enhanceSectionMutation.mutateAsync({
-                                                                                pageId: page.id,
-                                                                                sectionId: section.section_id,
-                                                                                sectionContent: section.content_summary
-                                                                            })
-                                                                        } catch (err) {
-                                                                            console.error(`Failed to enhance ${section.section_id}:`, err)
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                disabled={enhanceSectionMutation.isPending}
-                                                            >
-                                                                {enhanceSectionMutation.isPending ? (
-                                                                    <>
-                                                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                                        Enhancing...
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Sparkles className="w-4 h-4 mr-2" />
-                                                                        Enhance All
-                                                                    </>
-                                                                )}
-                                                            </Button>
                                                         </div>
                                                     )
                                                 })()}
@@ -1520,17 +1437,11 @@ ${schema?.overall_reasoning || 'N/A'}
                                                                     <EnhancedSectionCard
                                                                         section={section}
                                                                         storedContent={page.enhanced_content?.sections?.[section.section_id]}
-                                                                        onEnhance={() => enhanceSectionMutation.mutate({
-                                                                            pageId: page.id,
-                                                                            sectionId: section.section_id,
-                                                                            sectionContent: section.content_summary
-                                                                        })}
                                                                         onSave={(content) => saveEnhancedContentMutation.mutate({
                                                                             pageId: page.id,
                                                                             sectionId: section.section_id,
                                                                             content
                                                                         })}
-                                                                        isEnhancing={enhanceSectionMutation.isPending}
                                                                         isSaving={saveEnhancedContentMutation.isPending}
                                                                     />
                                                                 </div>
