@@ -2513,6 +2513,9 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
         const selectedModel = model || promptData?.default_model || 'gpt-4o'
 
         // Substitute variables in the user prompt template
+        // Determine heading level for this section
+        const headingLevel = sectionDef?.heading_level || (sectionId === 'hero' ? 'h1' : 'h2')
+
         const userPrompt = userPromptTemplate
             .replace(/\{\{section_name\}\}/g, effectiveSectionName)
             .replace(/\{\{section_id\}\}/g, sectionId)
@@ -2524,6 +2527,7 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
             .replace(/\{\{already_enhanced_context\}\}/g, alreadyEnhancedContext)
             .replace(/\{\{forbidden_phrases\}\}/g, forbiddenPhrases)
             .replace(/\{\{original_content\}\}/g, actualSectionContent || 'Section was missing - generate new content.')
+            .replace(/\{\{heading_level\}\}/g, headingLevel)
 
         // Call AI using unified multi-provider function
         const aiResult = await callAI({
