@@ -32,6 +32,48 @@ function getSupabase() {
     return _supabase
 }
 
+// Clean Firecrawl markdown: strip pre-heading junk, images, and footer noise
+function cleanMarkdown(md) {
+    if (!md) return ''
+    const lines = md.split('\n')
+
+    // Find the first heading line (# ...)
+    let firstHeadingIdx = lines.findIndex(l => /^#{1,6}\s+/.test(l))
+    if (firstHeadingIdx === -1) firstHeadingIdx = 0
+
+    // Find last meaningful content (trim footer junk)
+    let lastContentIdx = lines.length - 1
+    const footerPatterns = [
+        /^©\s*\d{4}/i,
+        /all\s*rights?\s*reserved/i,
+        /powered\s*by\s*(shopify|wordpress|squarespace|wix)/i,
+        /privacy\s*policy/i,
+        /terms\s*(of\s*service|&\s*conditions|\s*of\s*use)/i,
+        /^follow\s*us/i,
+        /^\[?(facebook|instagram|twitter|linkedin|youtube|tiktok)\]?\s*$/i,
+    ]
+    for (let i = lines.length - 1; i > firstHeadingIdx; i--) {
+        const trimmed = lines[i].trim()
+        if (!trimmed) continue
+        if (footerPatterns.some(p => p.test(trimmed))) {
+            lastContentIdx = i - 1
+        } else {
+            break
+        }
+    }
+
+    return lines.slice(firstHeadingIdx, lastContentIdx + 1)
+        .filter(line => {
+            const trimmed = line.trim()
+            if (/^!\[.*?\]\(.*?\)\s*$/.test(trimmed)) return false
+            if (/^\[(call|book|schedule|get\s+\d+%)/i.test(trimmed)) return false
+            return true
+        })
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+}
+
 // Initialize Firecrawl lazily
 let _firecrawl = null
 function getFirecrawl() {
@@ -121,7 +163,7 @@ export function parseFirecrawlResponse(data, siteId) {
         title: data.metadata?.title || '',
         html_content: data.rawHtml,        // Full HTML for reference
         cleaned_html: data.html,           // Cleaned HTML (main content only)
-        main_content: data.markdown,       // LLM-ready markdown
+        main_content: cleanMarkdown(data.markdown),       // LLM-ready markdown (cleaned)
         headings: headings,
         meta_tags: {
             description: data.metadata?.description || '',

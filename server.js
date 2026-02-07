@@ -165,6 +165,55 @@ Respond with this exact JSON format:
   }
 }`
 
+// Clean Firecrawl markdown: strip pre-heading junk, images, and footer noise
+function cleanMarkdown(md) {
+    if (!md) return ''
+    const lines = md.split('\n')
+
+    // Find the first heading line (# ...)
+    let firstHeadingIdx = lines.findIndex(l => /^#{1,6}\s+/.test(l))
+    if (firstHeadingIdx === -1) firstHeadingIdx = 0
+
+    // Find last meaningful content (trim footer junk)
+    let lastContentIdx = lines.length - 1
+    const footerPatterns = [
+        /^©\s*\d{4}/i,
+        /all\s*rights?\s*reserved/i,
+        /powered\s*by\s*(shopify|wordpress|squarespace|wix)/i,
+        /privacy\s*policy/i,
+        /terms\s*(of\s*service|&\s*conditions|\s*of\s*use)/i,
+        /^follow\s*us/i,
+        /^\[?(facebook|instagram|twitter|linkedin|youtube|tiktok)\]?\s*$/i,
+    ]
+    // Walk backward to find where footer starts
+    for (let i = lines.length - 1; i > firstHeadingIdx; i--) {
+        const trimmed = lines[i].trim()
+        if (!trimmed) continue
+        if (footerPatterns.some(p => p.test(trimmed))) {
+            lastContentIdx = i - 1
+        } else {
+            break
+        }
+    }
+
+    // Filter lines between first heading and last content
+    const cleaned = lines.slice(firstHeadingIdx, lastContentIdx + 1)
+        .filter(line => {
+            const trimmed = line.trim()
+            // Remove image-only lines: ![alt](url)
+            if (/^!\[.*?\]\(.*?\)\s*$/.test(trimmed)) return false
+            // Remove standalone phone/CTA lines
+            if (/^\[(call|book|schedule|get\s+\d+%)/i.test(trimmed)) return false
+            return true
+        })
+        .join('\n')
+        // Collapse 3+ blank lines into 2
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+
+    return cleaned
+}
+
 // Fetch prompt from database by type (no caching to ensure fresh updates)
 async function getPrompt(promptType) {
     try {
@@ -1840,7 +1889,7 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
                 title: result.metadata?.title || null,
                 html_content: result.rawHtml,        // Full HTML
                 cleaned_html: result.html,           // Cleaned HTML (main content)
-                main_content: result.markdown,       // LLM-ready markdown
+                main_content: cleanMarkdown(result.markdown),       // LLM-ready markdown (cleaned)
                 headings: headings,
                 meta_tags: {
                     description: result.metadata?.description || '',

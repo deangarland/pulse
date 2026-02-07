@@ -155,6 +155,134 @@ function extractHeadingLevel(location: string): string | null {
 }
 
 
+// Markdown Content Renderer - converts cleaned markdown to styled HTML
+function MarkdownContent({ markdown, showHeader = true }: { markdown: string; showHeader?: boolean }) {
+    const wordCount = markdown?.split(/\s+/).length || 0
+
+    const renderedContent = useMemo(() => {
+        if (!markdown) return []
+        const lines = markdown.split('\n')
+        const elements: React.ReactNode[] = []
+        let i = 0
+
+        while (i < lines.length) {
+            const line = lines[i]
+
+            // Headings
+            const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
+            if (headingMatch) {
+                const level = headingMatch[1].length
+                const text = headingMatch[2]
+                const badgeColor = level === 1 ? 'bg-blue-500' : level === 2 ? 'bg-green-500' : level === 3 ? 'bg-purple-500' : 'bg-orange-500'
+                const sizeClass = level === 1 ? 'text-xl font-bold' : level === 2 ? 'text-lg font-semibold' : level === 3 ? 'text-base font-medium' : 'text-sm font-medium'
+                const badge = (
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold uppercase mr-2 ${badgeColor} text-white`}>
+                        H{level}
+                    </span>
+                )
+                if (level === 1) elements.push(<h1 key={i} className={`${sizeClass} mt-4`}>{badge}{text}</h1>)
+                else if (level === 2) elements.push(<h2 key={i} className={`${sizeClass} mt-4`}>{badge}{text}</h2>)
+                else if (level === 3) elements.push(<h3 key={i} className={`${sizeClass} mt-4`}>{badge}{text}</h3>)
+                else elements.push(<h4 key={i} className={`${sizeClass} mt-4`}>{badge}{text}</h4>)
+                i++
+                continue
+            }
+
+            // Unordered list items
+            if (/^[-*]\s+/.test(line)) {
+                const listItems: React.ReactNode[] = []
+                while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+                    listItems.push(<li key={i} className="text-sm leading-relaxed my-1 ml-4">{formatInlineMarkdown(lines[i].replace(/^[-*]\s+/, ''))}</li>)
+                    i++
+                }
+                elements.push(<ul key={`ul-${i}`} className="list-disc my-3 ml-4">{listItems}</ul>)
+                continue
+            }
+
+            // Ordered list items
+            if (/^\d+\.\s+/.test(line)) {
+                const listItems: React.ReactNode[] = []
+                while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+                    listItems.push(<li key={i} className="text-sm leading-relaxed my-1 ml-4">{formatInlineMarkdown(lines[i].replace(/^\d+\.\s+/, ''))}</li>)
+                    i++
+                }
+                elements.push(<ol key={`ol-${i}`} className="list-decimal my-3 ml-4">{listItems}</ol>)
+                continue
+            }
+
+            // Empty lines (spacer)
+            if (!line.trim()) {
+                i++
+                continue
+            }
+
+            // Paragraphs
+            elements.push(<p key={i} className="text-sm leading-relaxed my-2">{formatInlineMarkdown(line)}</p>)
+            i++
+        }
+
+        return elements
+    }, [markdown])
+
+    return (
+        <>
+            {showHeader && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
+                    <span>Page content (from cleaned HTML)</span>
+                    <span>{wordCount} words</span>
+                </div>
+            )}
+            <div className="bg-muted/30 p-6 rounded-md max-h-[600px] overflow-y-auto">
+                <article className="space-y-1">
+                    {renderedContent}
+                </article>
+            </div>
+        </>
+    )
+}
+
+// Format inline markdown: **bold**, *italic*, [links](url)
+function formatInlineMarkdown(text: string): React.ReactNode {
+    // Split on markdown patterns and rebuild with React elements
+    const parts: React.ReactNode[] = []
+    let remaining = text
+    let key = 0
+
+    while (remaining.length > 0) {
+        // Bold
+        const boldMatch = remaining.match(/\*\*(.+?)\*\*/)
+        // Link
+        const linkMatch = remaining.match(/\[([^\]]+)\]\(([^)]+)\)/)
+
+        // Find the earliest match
+        const matches = [
+            boldMatch ? { type: 'bold', index: remaining.indexOf(boldMatch[0]), match: boldMatch } : null,
+            linkMatch ? { type: 'link', index: remaining.indexOf(linkMatch[0]), match: linkMatch } : null,
+        ].filter(Boolean).sort((a, b) => a!.index - b!.index)
+
+        if (matches.length === 0) {
+            parts.push(remaining)
+            break
+        }
+
+        const first = matches[0]!
+        if (first.index > 0) {
+            parts.push(remaining.substring(0, first.index))
+        }
+
+        if (first.type === 'bold') {
+            parts.push(<strong key={key++}>{first.match![1]}</strong>)
+            remaining = remaining.substring(first.index + first.match![0].length)
+        } else if (first.type === 'link') {
+            parts.push(<a key={key++} href={first.match![2]} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">{first.match![1]}</a>)
+            remaining = remaining.substring(first.index + first.match![0].length)
+        }
+    }
+
+    return parts.length === 1 ? parts[0] : <>{parts}</>
+}
+
+
 // Clean HTML Content Renderer - renders cleaned_html with proper formatting
 function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = false }: { html: string; wordCount?: number; showHeader?: boolean; hideImages?: boolean }) {
     const containerRef = useRef<HTMLDivElement>(null)
@@ -1296,13 +1424,10 @@ ${schema?.overall_reasoning || 'N/A'}
                                         <TabsTrigger value="compare">Compare</TabsTrigger>
                                     </TabsList>
 
-                                    {/* Original Content - prioritize cleaned_html */}
+                                    {/* Original Content - render cleaned markdown */}
                                     <TabsContent value="original" className="space-y-4">
-                                        {page.cleaned_html ? (
-                                            <CleanHtmlContent
-                                                html={page.cleaned_html}
-                                                wordCount={page.main_content?.split(/\s+/).length || 0}
-                                            />
+                                        {page.main_content ? (
+                                            <MarkdownContent markdown={page.main_content} />
                                         ) : (
                                             <>
                                                 <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
