@@ -2633,6 +2633,192 @@ ${forbidden.map(f => `- ${f}`).join('\n')}`
     }
 })
 
+// POST /api/enhance-page - One-shot page analysis and enhancement
+// Replaces the multi-step analyze + enhance-section flow with a single AI call
+app.post('/api/enhance-page', async (req, res) => {
+    try {
+        const { pageId, model } = req.body
+
+        if (!pageId) {
+            return res.status(400).json({ error: 'pageId is required' })
+        }
+
+        console.log(`\n🚀 ONE-SHOT PAGE ENHANCEMENT: Starting for page ${pageId}`)
+        const startTime = Date.now()
+
+        // Get page content
+        const { data: page, error: pageError } = await getSupabase()
+            .from('page_index')
+            .select('id, url, title, page_type, cleaned_html, site_id')
+            .eq('id', pageId)
+            .single()
+
+        if (pageError || !page) {
+            return res.status(404).json({ error: 'Page not found' })
+        }
+
+        if (!page.page_type) {
+            return res.status(400).json({ error: 'Page must have page_type set. Classify the page first.' })
+        }
+
+        if (!page.cleaned_html || page.cleaned_html.length < 100) {
+            return res.status(400).json({ error: 'Page has no content. Recrawl the page first.' })
+        }
+
+        // Get template for this page type (includes enhancement_guidance)
+        const { data: template, error: templateError } = await getSupabase()
+            .from('page_content_templates')
+            .select('*')
+            .eq('page_type', page.page_type)
+            .single()
+
+        if (templateError || !template) {
+            return res.status(404).json({ error: `No template found for page type: ${page.page_type}` })
+        }
+
+        // Get site info for business name
+        const { data: site } = await getSupabase()
+            .from('site_index')
+            .select('domain, name')
+            .eq('id', page.site_id)
+            .single()
+
+        // Extract business name and location from page data
+        const businessName = site?.name || page.title?.split(/[-|–]/)[0]?.trim() || 'this business'
+        const locationMatch = page.url?.match(/(?:saint[-\s]?johns|st[-\s]?augustine|jacksonville|florida|fl)/i)
+        const location = locationMatch ? locationMatch[0] : ''
+
+        // Build sections lists
+        const requiredSections = (template.sections || [])
+            .filter(s => s.required)
+            .map(s => `- ${s.id}: "${s.name}" - ${s.description}`)
+            .join('\n')
+
+        const optionalSections = (template.sections || [])
+            .filter(s => !s.required)
+            .map(s => `- ${s.id}: "${s.name}" - ${s.description}`)
+            .join('\n')
+
+        // Fetch prompt from database
+        const promptData = await getPrompt('page_enhancement')
+        if (!promptData) {
+            return res.status(500).json({
+                error: 'page_enhancement prompt not found in database. Add it via Admin > Prompts.'
+            })
+        }
+
+        const systemPrompt = promptData.system_prompt
+        const userPromptTemplate = promptData.user_prompt_template
+        const selectedModel = model || promptData.default_model || 'gpt-4o'
+
+        // Build user prompt with all substitutions
+        const userPrompt = userPromptTemplate
+            .replace(/\{\{page_title\}\}/g, page.title || 'Untitled')
+            .replace(/\{\{page_url\}\}/g, page.url || '')
+            .replace(/\{\{page_type\}\}/g, page.page_type.toUpperCase())
+            .replace(/\{\{business_name\}\}/g, businessName)
+            .replace(/\{\{location\}\}/g, location)
+            .replace(/\{\{enhancement_guidance\}\}/g, template.enhancement_guidance || 'No specific guidance for this page type.')
+            .replace(/\{\{required_sections\}\}/g, requiredSections || 'None specified')
+            .replace(/\{\{optional_sections\}\}/g, optionalSections || 'None specified')
+            .replace(/\{\{cleaned_html\}\}/g, page.cleaned_html.substring(0, 50000)) // Cap at 50K chars
+
+        console.log(`   📝 Prompt built: ${userPrompt.length} chars user prompt`)
+        console.log(`   🤖 Calling ${selectedModel}...`)
+
+        // Call AI
+        const aiResult = await callAI({
+            model: selectedModel,
+            systemPrompt,
+            userPrompt,
+            temperature: 0.4,
+            jsonMode: true
+        })
+
+        if (!aiResult.content) {
+            return res.status(500).json({ error: 'No response from AI' })
+        }
+
+        console.log(`   ✅ AI responded in ${aiResult.durationMs}ms (${aiResult.inputTokens} in, ${aiResult.outputTokens} out)`)
+
+        // Log AI usage
+        await logAIUsage({
+            action: 'page_enhancement',
+            pageId,
+            pageUrl: page.url,
+            provider: aiResult.provider,
+            model: selectedModel,
+            inputTokens: aiResult.inputTokens,
+            outputTokens: aiResult.outputTokens,
+            requestDurationMs: aiResult.durationMs,
+            success: true
+        })
+
+        // Parse response
+        let enhancement
+        try {
+            enhancement = JSON.parse(stripMarkdownCodeBlock(aiResult.content))
+        } catch (e) {
+            console.error('Failed to parse AI response:', aiResult.content.substring(0, 500))
+            return res.status(500).json({ error: 'Failed to parse AI response', raw: aiResult.content.substring(0, 1000) })
+        }
+
+        // Build enhanced_content structure for database
+        const enhancedContent = {
+            // Summary info
+            summary: enhancement.summary || enhancement.page_summary || {},
+            overall_assessment: enhancement.summary?.key_improvements?.join('. ') || '',
+            analyzed_at: new Date().toISOString(),
+
+            // Section data - convert array to object keyed by section_id
+            sections: {},
+            section_analysis: enhancement.sections || [],
+
+            // Additional insights
+            missing_sections: enhancement.missing_sections || [],
+            linking_opportunities: enhancement.linking_opportunities || enhancement.internal_linking_opportunities || []
+        }
+
+        // Convert sections array to object format expected by UI
+        if (enhancement.sections && Array.isArray(enhancement.sections)) {
+            for (const section of enhancement.sections) {
+                enhancedContent.sections[section.section_id] = {
+                    section_name: section.section_name,
+                    original: section.original_html,
+                    enhanced: section.enhanced_html,
+                    changes: section.changes || section.changes_made || [],
+                    keywords_preserved: section.keywords_preserved || [],
+                    template_match: section.matched !== false,
+                    enhanced_at: new Date().toISOString()
+                }
+            }
+        }
+
+        // Save to database
+        await getSupabase()
+            .from('page_index')
+            .update({
+                enhanced_content: enhancedContent,
+                content_analyzed_at: new Date().toISOString()
+            })
+            .eq('id', pageId)
+
+        const totalTime = Date.now() - startTime
+        console.log(`   🎉 Page enhancement complete in ${totalTime}ms`)
+
+        res.json({
+            success: true,
+            pageId,
+            enhancement,
+            tokens: { input: aiResult.inputTokens, output: aiResult.outputTokens },
+            durationMs: totalTime
+        })
+
+    } catch (error) {
+        console.error('Page enhancement error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'dist')))
