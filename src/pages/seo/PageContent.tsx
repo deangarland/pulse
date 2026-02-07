@@ -228,7 +228,7 @@ function MarkdownContent({ markdown, showHeader = true }: { markdown: string; sh
         <>
             {showHeader && (
                 <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
-                    <span>Page content (from cleaned HTML)</span>
+                    <span>Page content</span>
                     <span>{wordCount} words</span>
                 </div>
             )}
@@ -399,7 +399,7 @@ function CleanHtmlContent({ html, wordCount, showHeader = true, hideImages = fal
         <div className={showHeader ? "space-y-2" : ""}>
             {showHeader && (
                 <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
-                    <span>Page content (from cleaned HTML)</span>
+                    <span>Page content</span>
                     {wordCount && <span>{wordCount} words</span>}
                 </div>
             )}
@@ -1520,11 +1520,13 @@ ${schema?.overall_reasoning || 'N/A'}
                                                                 </div>
                                                             )
                                                         })()}
-                                                        <div className={`text-3xl font-bold ${contentAnalysis.overall_score >= 80 ? 'text-green-600' :
-                                                            contentAnalysis.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
-                                                            }`}>
-                                                            {contentAnalysis.overall_score}%
-                                                        </div>
+                                                        {contentAnalysis.overall_score > 0 && (
+                                                            <div className={`text-3xl font-bold ${contentAnalysis.overall_score >= 80 ? 'text-green-600' :
+                                                                contentAnalysis.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
+                                                                }`}>
+                                                                {contentAnalysis.overall_score}%
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -1617,7 +1619,11 @@ ${schema?.overall_reasoning || 'N/A'}
                                                         ORIGINAL
                                                     </div>
                                                     <div className="bg-muted/30 p-4 rounded-md max-h-[600px] overflow-y-auto">
-                                                        <CleanHtmlContent html={page.cleaned_html || ''} showHeader={false} hideImages={true} />
+                                                        {page.main_content ? (
+                                                            <MarkdownContent markdown={page.main_content} showHeader={false} />
+                                                        ) : (
+                                                            <CleanHtmlContent html={page.cleaned_html || ''} showHeader={false} hideImages={true} />
+                                                        )}
                                                     </div>
                                                 </div>
 
