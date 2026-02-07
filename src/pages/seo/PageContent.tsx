@@ -977,36 +977,18 @@ export default function PageContent() {
         enabled: !!selectedPage
     })
 
-    // Fetch default model from the page-type-linked enhancement prompt
+    // Fetch default model from the page_enhancement prompt
     const { data: promptSettings } = useQuery({
-        queryKey: ['prompt-default-model', page?.page_type],
+        queryKey: ['prompt-default-model'],
         queryFn: async () => {
-            if (!page?.page_type) return null
-            // Get the template for this page type (which has enhancement_prompt_id)
-            const { data: template, error: templateError } = await supabase
-                .from('page_content_templates')
-                .select('enhancement_prompt_id')
-                .eq('page_type', page.page_type)
-                .single()
-            if (templateError || !template?.enhancement_prompt_id) {
-                // Fallback: try the generic page_enhancement prompt
-                const { data: fallback } = await supabase
-                    .from('prompts')
-                    .select('default_model')
-                    .eq('prompt_type', 'page_enhancement')
-                    .single()
-                return fallback
-            }
-            // Get the linked prompt's default model
-            const { data: prompt, error: promptError } = await supabase
+            const { data, error } = await supabase
                 .from('prompts')
                 .select('default_model')
-                .eq('id', template.enhancement_prompt_id)
+                .eq('prompt_type', 'page_enhancement')
                 .single()
-            if (promptError) return { default_model: 'gpt-4o' }
-            return prompt
-        },
-        enabled: !!page?.page_type
+            if (error) return { default_model: 'gpt-4o' }
+            return data
+        }
     })
 
     // Update selected model when prompt settings load
