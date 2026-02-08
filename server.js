@@ -1864,7 +1864,7 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
         console.log(`🔄 Re-crawling page with Firecrawl: ${page.url}`)
 
         // Import and use Firecrawl service
-        const { scrapePage, parseFirecrawlResponse } = await import('./firecrawl-service.js')
+        const { scrapePage, parseSectionsFromMarkdown, extractSchemaMarkup } = await import('./firecrawl-service.js')
 
         // Fetch using Firecrawl
         const result = await scrapePage(page.url, { onlyMainContent: true })
@@ -1882,6 +1882,12 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
             headings.push({ level: match[1].length, text: match[2].trim() })
         }
 
+        // Parse content sections and schema
+        const cleanedMd = cleanMarkdown(result.markdown)
+        const contentSections = parseSectionsFromMarkdown(cleanedMd)
+        const schemaExisting = extractSchemaMarkup(result.rawHtml || '')
+        console.log(`   📋 Parsed ${contentSections.length} content sections, ${schemaExisting.length} schema objects`)
+
         // Update the page in database
         const { error: updateError } = await getSupabase()
             .from('page_index')
@@ -1889,8 +1895,10 @@ app.post('/api/pages/:id/recrawl', async (req, res) => {
                 title: result.metadata?.title || null,
                 html_content: result.rawHtml,        // Full HTML
                 cleaned_html: result.html,           // Cleaned HTML (main content)
-                main_content: cleanMarkdown(result.markdown),       // LLM-ready markdown (cleaned)
+                main_content: cleanedMd,             // LLM-ready markdown (cleaned)
                 headings: headings,
+                content_sections: contentSections,
+                schema_existing: schemaExisting,
                 meta_tags: {
                     description: result.metadata?.description || '',
                     keywords: result.metadata?.keywords || '',
@@ -2056,7 +2064,7 @@ app.post('/api/enhance-page', async (req, res) => {
         // Get page content
         const { data: page, error: pageError } = await getSupabase()
             .from('page_index')
-            .select('id, url, title, page_type, cleaned_html, site_id')
+            .select('id, url, title, page_type, cleaned_html, main_content, content_sections, site_id')
             .eq('id', pageId)
             .single()
 
@@ -2068,9 +2076,31 @@ app.post('/api/enhance-page', async (req, res) => {
             return res.status(400).json({ error: 'Page must have page_type set. Classify the page first.' })
         }
 
-        if (!page.cleaned_html || page.cleaned_html.length < 100) {
+        if ((!page.cleaned_html || page.cleaned_html.length < 100) && (!page.main_content || page.main_content.length < 50)) {
             return res.status(400).json({ error: 'Page has no content. Recrawl the page first.' })
         }
+
+        // ── Step 1: Build section inventory (deterministic, no AI) ──
+        let contentSections = page.content_sections
+        if (!contentSections || contentSections.length === 0) {
+            // Parse on-the-fly for pages crawled before this feature
+            const { parseSectionsFromMarkdown } = await import('./firecrawl-service.js')
+            const markdownToParse = page.main_content || ''
+            contentSections = parseSectionsFromMarkdown(markdownToParse)
+            console.log(`   📋 Parsed sections on-the-fly: ${contentSections.length} sections`)
+        } else {
+            console.log(`   📋 Content inventory from DB: ${contentSections.length} sections`)
+        }
+
+        // Build the inventory string for prompt injection
+        const sectionInventory = contentSections.map((s, i) => {
+            const flags = []
+            if (s.has_list) flags.push('has list')
+            if (s.has_faq_pattern) flags.push('has FAQ pattern')
+            const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : ''
+            return `${i + 1}. "${s.heading}" — ${s.word_count} words${flagStr}`
+        }).join('\n')
+        const sectionCount = contentSections.length
 
         // Get template for this page type (includes enhancement_guidance)
         const { data: template, error: templateError } = await getSupabase()
@@ -2127,6 +2157,9 @@ app.post('/api/enhance-page', async (req, res) => {
         const selectedModel = model || promptData.default_model || 'gpt-4o'
 
         // Build user prompt with all substitutions
+        // Use main_content (markdown) for AI input — cleaner and fewer tokens
+        const contentForAI = (page.main_content || page.cleaned_html || '').substring(0, 50000)
+
         const userPrompt = userPromptTemplate
             .replace(/\{\{page_title\}\}/g, page.title || 'Untitled')
             .replace(/\{\{page_url\}\}/g, page.url || '')
@@ -2136,9 +2169,12 @@ app.post('/api/enhance-page', async (req, res) => {
             .replace(/\{\{enhancement_guidance\}\}/g, template.enhancement_guidance || 'No specific guidance for this page type.')
             .replace(/\{\{required_sections\}\}/g, requiredSections || 'None specified')
             .replace(/\{\{optional_sections\}\}/g, optionalSections || 'None specified')
-            .replace(/\{\{cleaned_html\}\}/g, page.cleaned_html.substring(0, 50000)) // Cap at 50K chars
+            .replace(/\{\{section_inventory\}\}/g, sectionInventory || 'No sections detected')
+            .replace(/\{\{section_count\}\}/g, String(sectionCount))
+            .replace(/\{\{main_content\}\}/g, contentForAI)
+            .replace(/\{\{cleaned_html\}\}/g, contentForAI) // Backward compat for prompts not yet migrated
 
-        console.log(`   📝 Prompt built: ${userPrompt.length} chars user prompt`)
+        console.log(`   📝 Prompt built: ${userPrompt.length} chars (${sectionCount} sections in inventory)`)
         console.log(`   🤖 Calling ${selectedModel}...`)
 
         // Call AI
@@ -2182,6 +2218,7 @@ app.post('/api/enhance-page', async (req, res) => {
         const enhancedContent = {
             // Summary info
             summary: enhancement.summary || enhancement.page_summary || {},
+            overall_score: enhancement.summary?.seo_score || enhancement.overall_score || 0,
             overall_assessment: enhancement.summary?.key_improvements?.join('. ') || '',
             analyzed_at: new Date().toISOString(),
 
@@ -2209,6 +2246,44 @@ app.post('/api/enhance-page', async (req, res) => {
             }
         }
 
+        // ── Post-Validation: Compare inventory vs AI output ──
+        const enhancedSectionCount = enhancement.sections?.length || 0
+        const validation = {
+            inventoryCount: sectionCount,
+            enhancedCount: enhancedSectionCount,
+            missingSections: [],
+            status: 'unknown'
+        }
+
+        if (sectionCount > 0) {
+            if (enhancedSectionCount >= sectionCount) {
+                validation.status = 'complete'
+                console.log(`   ✅ Validation: ${enhancedSectionCount}/${sectionCount} sections enhanced`)
+            } else {
+                validation.status = 'incomplete'
+                // Identify which inventory sections might be missing
+                const enhancedHeadings = new Set(
+                    (enhancement.sections || []).map(s => (s.section_name || '').toLowerCase())
+                )
+                for (const invSection of contentSections) {
+                    const heading = invSection.heading.toLowerCase()
+                    // Fuzzy match: check if any enhanced section name contains the inventory heading
+                    const found = [...enhancedHeadings].some(eh =>
+                        eh.includes(heading) || heading.includes(eh)
+                    )
+                    if (!found) {
+                        validation.missingSections.push(invSection.heading)
+                    }
+                }
+                console.log(`   ⚠️ Section mismatch: inventory had ${sectionCount}, AI returned ${enhancedSectionCount}`)
+                if (validation.missingSections.length > 0) {
+                    console.log(`   ⚠️ Possibly missing: ${validation.missingSections.join(', ')}`)
+                }
+            }
+        }
+
+        enhancedContent.validation = validation
+
         // Save to database
         await getSupabase()
             .from('page_index')
@@ -2225,6 +2300,7 @@ app.post('/api/enhance-page', async (req, res) => {
             success: true,
             pageId,
             enhancement,
+            validation,
             tokens: { input: aiResult.inputTokens, output: aiResult.outputTokens },
             durationMs: totalTime
         })

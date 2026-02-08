@@ -156,6 +156,8 @@ export function parseFirecrawlResponse(data, siteId) {
         }
     }
 
+    const cleaned = cleanMarkdown(data.markdown)
+
     return {
         site_id: siteId,
         url: url,
@@ -163,8 +165,10 @@ export function parseFirecrawlResponse(data, siteId) {
         title: data.metadata?.title || '',
         html_content: data.rawHtml,        // Full HTML for reference
         cleaned_html: data.html,           // Cleaned HTML (main content only)
-        main_content: cleanMarkdown(data.markdown),       // LLM-ready markdown (cleaned)
+        main_content: cleaned,             // LLM-ready markdown (cleaned)
         headings: headings,
+        content_sections: parseSectionsFromMarkdown(cleaned),
+        schema_existing: extractSchemaMarkup(data.rawHtml || ''),
         meta_tags: {
             description: data.metadata?.description || '',
             keywords: data.metadata?.keywords || '',
@@ -199,6 +203,137 @@ function extractHeadingsFromMarkdown(markdown) {
     }
 
     return headings
+}
+
+/**
+ * Parse markdown into content sections using heading-based splitting.
+ * Auto-detects the "section level" heading (most common among H1-H3).
+ * @param {string} markdown - Cleaned markdown content
+ * @returns {Array} - [{index, heading, level, content, word_count, has_list, has_faq_pattern}]
+ */
+export function parseSectionsFromMarkdown(markdown) {
+    if (!markdown || markdown.trim().length === 0) return []
+
+    const lines = markdown.split('\n')
+
+    // Count headings at each level (H1-H3 only — H4+ are sub-headings)
+    const levelCounts = { 1: 0, 2: 0, 3: 0 }
+    const headingLines = []
+    for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/^(#{1,3})\s+(.+)$/)
+        if (match) {
+            const level = match[1].length
+            levelCounts[level]++
+            headingLines.push({ lineIndex: i, level, text: match[2].trim() })
+        }
+    }
+
+    // Determine the section-level heading:
+    // - If there's only 1 H1 (page title), skip it and use the next most common
+    // - Otherwise, use the heading level with the most occurrences
+    let sectionLevel
+    if (levelCounts[1] === 1 && (levelCounts[2] > 0 || levelCounts[3] > 0)) {
+        // Single H1 = page title; use H2 if available, else H3
+        sectionLevel = levelCounts[2] >= levelCounts[3] ? 2 : 3
+    } else if (levelCounts[1] > 1) {
+        // Multiple H1s — they're being used as sections
+        sectionLevel = 1
+    } else if (levelCounts[2] > 0) {
+        sectionLevel = 2
+    } else if (levelCounts[3] > 0) {
+        sectionLevel = 3
+    } else {
+        // No headings at all — treat entire content as one section
+        const content = markdown.trim()
+        return [{
+            index: 1,
+            heading: '(No heading)',
+            level: 0,
+            content: content,
+            word_count: content.split(/\s+/).filter(Boolean).length,
+            has_list: /^[-*]\s+/m.test(content) || /^\d+\.\s+/m.test(content),
+            has_faq_pattern: /\?\s*$/m.test(content)
+        }]
+    }
+
+    // Split content at section-level headings
+    const sectionHeadings = headingLines.filter(h => h.level === sectionLevel)
+    const sections = []
+
+    // Check for content before the first section heading (pre-heading content)
+    if (sectionHeadings.length > 0 && sectionHeadings[0].lineIndex > 0) {
+        const preContent = lines.slice(0, sectionHeadings[0].lineIndex).join('\n').trim()
+        if (preContent.length > 0) {
+            // Check if there's an H1 in the pre-content
+            const h1Match = preContent.match(/^#\s+(.+)$/m)
+            sections.push({
+                index: 1,
+                heading: h1Match ? h1Match[1].trim() : '(Page intro)',
+                level: h1Match ? 1 : 0,
+                content: preContent,
+                word_count: preContent.split(/\s+/).filter(Boolean).length,
+                has_list: /^[-*]\s+/m.test(preContent) || /^\d+\.\s+/m.test(preContent),
+                has_faq_pattern: false
+            })
+        }
+    }
+
+    // Build sections from each section-level heading to the next
+    for (let i = 0; i < sectionHeadings.length; i++) {
+        const startIdx = sectionHeadings[i].lineIndex
+        const endIdx = i + 1 < sectionHeadings.length
+            ? sectionHeadings[i + 1].lineIndex
+            : lines.length
+
+        const content = lines.slice(startIdx, endIdx).join('\n').trim()
+        const wordCount = content.split(/\s+/).filter(Boolean).length
+
+        // Detect FAQ patterns: headings ending in ?, or Q&A structures
+        const hasFaq = /\?\s*$/.test(sectionHeadings[i].text) ||
+            (content.match(/\?\s*$/gm) || []).length >= 2 ||
+            /frequently\s+asked|faq/i.test(sectionHeadings[i].text)
+
+        sections.push({
+            index: sections.length + 1,
+            heading: sectionHeadings[i].text,
+            level: sectionHeadings[i].level,
+            content: content,
+            word_count: wordCount,
+            has_list: /^[-*]\s+/m.test(content) || /^\d+\.\s+/m.test(content),
+            has_faq_pattern: hasFaq
+        })
+    }
+
+    return sections
+}
+
+/**
+ * Extract existing JSON-LD schema.org markup from raw HTML.
+ * @param {string} rawHtml - Full unmodified HTML
+ * @returns {Array} - Array of parsed JSON-LD objects
+ */
+export function extractSchemaMarkup(rawHtml) {
+    if (!rawHtml) return []
+
+    const schemas = []
+    const regex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    let match
+
+    while ((match = regex.exec(rawHtml)) !== null) {
+        try {
+            const parsed = JSON.parse(match[1].trim())
+            // Handle both single objects and arrays of schemas
+            if (Array.isArray(parsed)) {
+                schemas.push(...parsed)
+            } else {
+                schemas.push(parsed)
+            }
+        } catch {
+            // Invalid JSON in script tag — skip
+        }
+    }
+
+    return schemas
 }
 
 // ============================================================
