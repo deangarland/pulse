@@ -376,7 +376,25 @@ export function parseSectionsFromMarkdown(markdown) {
         })
     }
 
-    return sections
+    // ── Post-parse: filter out nav/footer junk sections ──
+    const filtered = sections.filter(section => {
+        const { content, heading, word_count } = section
+
+        // Skip sections that are mostly links (nav blocks)
+        const linkCount = (content.match(/\[.*?\]\(.*?\)/g) || []).length
+        if (linkCount >= 3 && word_count < linkCount * 10) return false
+
+        // Skip browser error sections
+        if (/ERR_BLOCKED_BY_CLIENT/i.test(content)) return false
+
+        // Skip sections whose content is just a duplicate of its heading + a link
+        if (word_count < 15 && linkCount >= 1 && !/faq|question|pricing|cost/i.test(heading)) return false
+
+        return true
+    })
+
+    // Reindex after filtering
+    return filtered.map((s, i) => ({ ...s, index: i + 1 }))
 }
 
 /**
