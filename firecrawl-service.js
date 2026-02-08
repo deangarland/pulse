@@ -384,11 +384,14 @@ export function parseSectionsFromMarkdown(markdown) {
         const linkCount = (content.match(/\[.*?\]\(.*?\)/g) || []).length
         if (linkCount >= 3 && word_count < linkCount * 10) return false
 
-        // Skip browser error sections
-        if (/ERR_BLOCKED_BY_CLIENT/i.test(content)) return false
+        // Skip browser error sections (underscores may be escaped in markdown)
+        if (/ERR[\\_]*BLOCKED[\\_]*BY[\\_]*CLIENT/i.test(content)) return false
 
-        // Skip sections whose content is just a duplicate of its heading + a link
+        // Skip sections whose content is just a heading + a link (thin CTA)
         if (word_count < 15 && linkCount >= 1 && !/faq|question|pricing|cost/i.test(heading)) return false
+
+        // Skip sections with quoted headings (boilerplate like "Our spa locations...")
+        if (/^[""]/.test(heading) && linkCount >= 2) return false
 
         return true
     })
