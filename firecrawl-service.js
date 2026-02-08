@@ -32,44 +32,116 @@ function getSupabase() {
     return _supabase
 }
 
-// Clean Firecrawl markdown: strip pre-heading junk, images, and footer noise
+// Clean Firecrawl markdown: strip pre-heading junk, images, nav/footer noise, and browser errors
 function cleanMarkdown(md) {
     if (!md) return ''
-    const lines = md.split('\n')
+    let lines = md.split('\n')
 
     // Find the first heading line (# ...)
     let firstHeadingIdx = lines.findIndex(l => /^#{1,6}\s+/.test(l))
     if (firstHeadingIdx === -1) firstHeadingIdx = 0
 
-    // Find last meaningful content (trim footer junk)
+    // Trim everything before first heading
+    lines = lines.slice(firstHeadingIdx)
+
+    // ── Step 1: Remove browser error blocks ──
+    lines = lines.filter(line => {
+        const trimmed = line.trim()
+        if (/ERR_BLOCKED_BY_CLIENT/i.test(trimmed)) return false
+        if (/^this page has been blocked by an extension/i.test(trimmed)) return false
+        if (/^try disabling your extensions/i.test(trimmed)) return false
+        if (/is blocked$/i.test(trimmed)) return false
+        return true
+    })
+
+    // ── Step 2: Detect and remove repeated nav/sidebar blocks ──
+    // Navigation blocks look like clusters of heading lines that are just links
+    // e.g. "# [Service Name](url)" appearing in groups, repeated 2+ times
+    const headingLinkLines = new Map()  // heading text -> count
+    for (const line of lines) {
+        const match = line.match(/^#{1,6}\s+\[(.+?)\]\(.*?\)\s*$/)
+        if (match) {
+            const key = match[1].trim().toLowerCase()
+            headingLinkLines.set(key, (headingLinkLines.get(key) || 0) + 1)
+        }
+    }
+    // If a heading-link appears 2+ times, it's navigation — remove all instances
+    const navHeadings = new Set()
+    for (const [text, count] of headingLinkLines) {
+        if (count >= 2) navHeadings.add(text)
+    }
+    if (navHeadings.size > 0) {
+        lines = lines.filter(line => {
+            const match = line.match(/^#{1,6}\s+\[(.+?)\]\(.*?\)\s*$/)
+            if (match && navHeadings.has(match[1].trim().toLowerCase())) return false
+            return true
+        })
+    }
+
+    // ── Step 3: Detect nav/footer blocks by heading density ──
+    // If a trailing block is mostly headings with minimal body text, it's nav/footer
+    // Scan from the end looking for where real content stops
     let lastContentIdx = lines.length - 1
+
+    // Universal footer patterns (truly generic across all sites)
     const footerPatterns = [
         /^©\s*\d{4}/i,
         /all\s*rights?\s*reserved/i,
-        /powered\s*by\s*(shopify|wordpress|squarespace|wix)/i,
+        /powered\s*by\s*/i,
         /privacy\s*policy/i,
         /terms\s*(of\s*service|&\s*conditions|\s*of\s*use)/i,
         /^follow\s*us/i,
         /^\[?(facebook|instagram|twitter|linkedin|youtube|tiktok)\]?\s*$/i,
     ]
-    for (let i = lines.length - 1; i > firstHeadingIdx; i--) {
+
+    // Walk backward, skipping blanks and footer lines
+    for (let i = lines.length - 1; i > 0; i--) {
         const trimmed = lines[i].trim()
         if (!trimmed) continue
         if (footerPatterns.some(p => p.test(trimmed))) {
             lastContentIdx = i - 1
-        } else {
-            break
+            continue
+        }
+        break
+    }
+
+    // Heading-density check on trailing content:
+    // If the last ~30 non-empty lines are >60% headings, chop them — that's a nav block
+    const trailingLines = lines.slice(Math.max(0, lastContentIdx - 40), lastContentIdx + 1)
+    const nonEmptyTrailing = trailingLines.filter(l => l.trim().length > 0)
+    if (nonEmptyTrailing.length >= 8) {
+        const headingCount = nonEmptyTrailing.filter(l => /^#{1,6}\s+/.test(l)).length
+        const headingRatio = headingCount / nonEmptyTrailing.length
+        if (headingRatio > 0.6) {
+            // Find where this dense heading block starts
+            for (let i = lastContentIdx; i > 0; i--) {
+                const trimmed = lines[i].trim()
+                if (!trimmed) continue
+                // Count headings in a sliding window backward
+                const windowStart = Math.max(0, i - 10)
+                const window = lines.slice(windowStart, i + 1).filter(l => l.trim().length > 0)
+                const windowHeadings = window.filter(l => /^#{1,6}\s+/.test(l)).length
+                if (window.length >= 4 && windowHeadings / window.length > 0.6) {
+                    lastContentIdx = windowStart - 1
+                } else {
+                    break
+                }
+            }
         }
     }
 
-    return lines.slice(firstHeadingIdx, lastContentIdx + 1)
+    // ── Step 4: Filter individual junk lines ──
+    return lines.slice(0, lastContentIdx + 1)
         .filter(line => {
             const trimmed = line.trim()
+            // Remove image-only lines: ![alt](url)
             if (/^!\[.*?\]\(.*?\)\s*$/.test(trimmed)) return false
+            // Remove standalone phone/CTA lines
             if (/^\[(call|book|schedule|get\s+\d+%)/i.test(trimmed)) return false
             return true
         })
         .join('\n')
+        // Collapse 3+ blank lines into 2
         .replace(/\n{3,}/g, '\n\n')
         .trim()
 }

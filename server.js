@@ -165,49 +165,103 @@ Respond with this exact JSON format:
   }
 }`
 
-// Clean Firecrawl markdown: strip pre-heading junk, images, and footer noise
+// Clean crawled markdown: strip pre-heading junk, images, nav/footer noise, and browser errors
 function cleanMarkdown(md) {
     if (!md) return ''
-    const lines = md.split('\n')
+    let lines = md.split('\n')
 
     // Find the first heading line (# ...)
     let firstHeadingIdx = lines.findIndex(l => /^#{1,6}\s+/.test(l))
     if (firstHeadingIdx === -1) firstHeadingIdx = 0
 
-    // Find last meaningful content (trim footer junk)
+    // Trim everything before first heading
+    lines = lines.slice(firstHeadingIdx)
+
+    // ── Step 1: Remove browser error blocks ──
+    lines = lines.filter(line => {
+        const trimmed = line.trim()
+        if (/ERR_BLOCKED_BY_CLIENT/i.test(trimmed)) return false
+        if (/^this page has been blocked by an extension/i.test(trimmed)) return false
+        if (/^try disabling your extensions/i.test(trimmed)) return false
+        if (/is blocked$/i.test(trimmed)) return false
+        return true
+    })
+
+    // ── Step 2: Detect and remove repeated nav/sidebar blocks ──
+    const headingLinkLines = new Map()
+    for (const line of lines) {
+        const match = line.match(/^#{1,6}\s+\[(.+?)\]\(.*?\)\s*$/)
+        if (match) {
+            const key = match[1].trim().toLowerCase()
+            headingLinkLines.set(key, (headingLinkLines.get(key) || 0) + 1)
+        }
+    }
+    const navHeadings = new Set()
+    for (const [text, count] of headingLinkLines) {
+        if (count >= 2) navHeadings.add(text)
+    }
+    if (navHeadings.size > 0) {
+        lines = lines.filter(line => {
+            const match = line.match(/^#{1,6}\s+\[(.+?)\]\(.*?\)\s*$/)
+            if (match && navHeadings.has(match[1].trim().toLowerCase())) return false
+            return true
+        })
+    }
+
+    // ── Step 3: Detect nav/footer blocks by heading density ──
     let lastContentIdx = lines.length - 1
+
     const footerPatterns = [
         /^©\s*\d{4}/i,
         /all\s*rights?\s*reserved/i,
-        /powered\s*by\s*(shopify|wordpress|squarespace|wix)/i,
+        /powered\s*by\s*/i,
         /privacy\s*policy/i,
         /terms\s*(of\s*service|&\s*conditions|\s*of\s*use)/i,
         /^follow\s*us/i,
         /^\[?(facebook|instagram|twitter|linkedin|youtube|tiktok)\]?\s*$/i,
     ]
-    // Walk backward to find where footer starts
-    for (let i = lines.length - 1; i > firstHeadingIdx; i--) {
+
+    for (let i = lines.length - 1; i > 0; i--) {
         const trimmed = lines[i].trim()
         if (!trimmed) continue
         if (footerPatterns.some(p => p.test(trimmed))) {
             lastContentIdx = i - 1
-        } else {
-            break
+            continue
+        }
+        break
+    }
+
+    // Heading-density check: if trailing block is >60% headings, it's nav
+    const trailingLines = lines.slice(Math.max(0, lastContentIdx - 40), lastContentIdx + 1)
+    const nonEmptyTrailing = trailingLines.filter(l => l.trim().length > 0)
+    if (nonEmptyTrailing.length >= 8) {
+        const headingCount = nonEmptyTrailing.filter(l => /^#{1,6}\s+/.test(l)).length
+        const headingRatio = headingCount / nonEmptyTrailing.length
+        if (headingRatio > 0.6) {
+            for (let i = lastContentIdx; i > 0; i--) {
+                const trimmed = lines[i].trim()
+                if (!trimmed) continue
+                const windowStart = Math.max(0, i - 10)
+                const window = lines.slice(windowStart, i + 1).filter(l => l.trim().length > 0)
+                const windowHeadings = window.filter(l => /^#{1,6}\s+/.test(l)).length
+                if (window.length >= 4 && windowHeadings / window.length > 0.6) {
+                    lastContentIdx = windowStart - 1
+                } else {
+                    break
+                }
+            }
         }
     }
 
-    // Filter lines between first heading and last content
-    const cleaned = lines.slice(firstHeadingIdx, lastContentIdx + 1)
+    // ── Step 4: Filter individual junk lines ──
+    const cleaned = lines.slice(0, lastContentIdx + 1)
         .filter(line => {
             const trimmed = line.trim()
-            // Remove image-only lines: ![alt](url)
             if (/^!\[.*?\]\(.*?\)\s*$/.test(trimmed)) return false
-            // Remove standalone phone/CTA lines
             if (/^\[(call|book|schedule|get\s+\d+%)/i.test(trimmed)) return false
             return true
         })
         .join('\n')
-        // Collapse 3+ blank lines into 2
         .replace(/\n{3,}/g, '\n\n')
         .trim()
 
@@ -339,7 +393,7 @@ async function callAI({ model, systemPrompt, userPrompt, temperature = 0.7, json
         if (!anthropic) throw new Error('Anthropic API key not configured')
         const response = await anthropic.messages.create({
             model,
-            max_tokens: 8000,
+            max_tokens: 16384,
             system: systemPrompt,
             messages: [
                 { role: 'user', content: userPrompt + (jsonMode ? '\n\nRespond with valid JSON only.' : '') }
@@ -357,7 +411,6 @@ async function callAI({ model, systemPrompt, userPrompt, temperature = 0.7, json
             ],
             generationConfig: {
                 temperature,
-                maxOutputTokens: 8000,
                 ...(jsonMode && { responseMimeType: 'application/json' })
             }
         })
@@ -2158,7 +2211,7 @@ app.post('/api/enhance-page', async (req, res) => {
 
         // Build user prompt with all substitutions
         // Use main_content (markdown) for AI input — cleaner and fewer tokens
-        const contentForAI = (page.main_content || page.cleaned_html || '').substring(0, 50000)
+        const contentForAI = page.main_content || page.cleaned_html || ''
 
         const userPrompt = userPromptTemplate
             .replace(/\{\{page_title\}\}/g, page.title || 'Untitled')
